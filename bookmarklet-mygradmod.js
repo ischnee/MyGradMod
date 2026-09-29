@@ -4,20 +4,40 @@ javascript:(function(){
        (milestones, committees, funding) by SystemKey, and opens a dashboard tab. Only roster students
        (plus any current student missing from the roster) and only the fields in KEEP reach the
        dashboard; former students appear only in class totals and, on hover, as a name and outcome
-       for their class's hollow dots. Nothing is stored or sent anywhere. Definitions and data-source details:
-       bookmarklet-mygrad-program-monitor-notes.md */
+       for their class's hollow dots. Nothing is stored or sent anywhere. Definitions and design decisions are kept
+       in the maintainer's notes file (bookmarklet-mygradmod-notes.md, not published). */
+    /* MyGradMod's own message box, shown inside the MyGrad page: lower down than a browser alert, and headed so a
+       first-time user knows the bookmarklet itself is installed and working. OK, Enter, Escape or a click outside closes it. */
+    function notice(msg){
+        var old = document.getElementById("mygradmod-notice");
+        if(old) old.remove();
+        var shade = document.createElement("div");
+        shade.id = "mygradmod-notice";
+        shade.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:rgba(30,16,60,.28);display:flex;justify-content:center;align-items:flex-start;padding-top:32vh";
+        shade.innerHTML = "<div role='alertdialog' aria-labelledby='mygradmod-notice-head' style='width:min(440px,calc(100vw - 40px));background:#fff;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.35);overflow:hidden;font:15px/1.45 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;color:#222'>"
+            + "<div id='mygradmod-notice-head' style='background:#4b2e83;color:#fff;font-size:12px;font-weight:600;letter-spacing:.04em;padding:8px 16px'>MyGradMod successfully installed</div>"
+            + "<div class='msg' style='padding:16px 18px 4px'></div>"
+            + "<div style='padding:10px 18px 16px;text-align:right'><button type='button' style='background:#4b2e83;color:#fff;border:0;border-radius:16px;padding:6px 20px;font:inherit;font-weight:600;cursor:pointer'>OK</button></div></div>";
+        shade.querySelector(".msg").textContent = msg;
+        var onKey = function(e){ if(e.key === "Escape" || e.key === "Enter"){ e.preventDefault(); close(); } };
+        var close = function(){ shade.remove(); document.removeEventListener("keydown", onKey, true); };
+        shade.addEventListener("click", function(e){ if(e.target === shade || e.target.tagName === "BUTTON") close(); });
+        document.addEventListener("keydown", onKey, true);
+        document.body.appendChild(shade);
+        shade.querySelector("button").focus();
+    }
     if(location.pathname.indexOf("/mgp-dept.stu.detail/home/studentlistnew") === -1){
-        alert("Open MyGrad > Students > By Quarter, pick a quarter, then click this bookmarklet again.");
+        notice("Open MyGrad > Students > By Quarter, pick a quarter, then click this bookmarklet again.");
         return;
     }
     var rosterEntry = performance.getEntriesByType("resource").filter(function(e){ return e.name.indexOf("getStudentListNew") !== -1; }).pop();
     if(!rosterEntry){
-        alert("Pick a quarter on the By Quarter page and wait for the student list to load, then click again.");
+        notice("Pick a quarter on the By Quarter page and wait for the student list to load, then click again.");
         return;
     }
     var w = window.open("", "_blank");
     if(!w){
-        alert("Pop-up blocked! Allow pop-ups for this site, then click again.");
+        notice("Pop-up blocked! Allow pop-ups for this site, then click again.");
         return;
     }
     w.document.write("<title>MyGradMod</title><p style='font-family:sans-serif;padding:20px;color:#4b2e83'>Loading student data from MyGrad...</p>");
