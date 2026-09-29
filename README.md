@@ -58,7 +58,7 @@ A [bookmarklet](https://en.wikipedia.org/wiki/Bookmarklet) is a bookmark stored 
 ```
 javascript:(function(){
   var s = document.createElement('script');
-  s.src = 'https://cdn.jsdelivr.net/gh/ischnee/MyGradMod@main/bookmarklet-mygradmod.js';
+  s.src = 'https://cdn.jsdelivr.net/gh/ischnee/MyGradMod@main/bookmarklet-mygradmod.js?t=' + Date.now();
   s.onload = function() { console.log('[Bookmarklet] Script loaded'); };
   s.onerror = function() { console.error('[Bookmarklet] Failed to load script'); };
   document.body.appendChild(s);
@@ -132,5 +132,5 @@ Move the dots to another decade to compare.
 ## For maintainers
 
 - **Every push reaches every user.** Everyone using the loader runs whatever is on `main` in this repository the next time they click, on a page full of FERPA-protected records. Keep write access to people who need it, and protect those GitHub accounts with two-factor authentication.
-- **Updates can take a while to arrive.** jsDelivr caches the file, so a push can take several hours to reach everyone. To send it out immediately, open `https://purge.jsdelivr.net/gh/ischnee/MyGradMod@main/bookmarklet-mygradmod.js` once after pushing.
+- **Send updates out right away.** jsDelivr keeps a copy of the file on its servers for up to 12 hours. After pushing, open `https://purge.jsdelivr.net/gh/ischnee/MyGradMod@main/bookmarklet-mygradmod.js` once, and everyone gets the new version on their next click. The loader adds a timestamp (`?t=…`) to the address, so browsers never reuse an old copy; without it, jsDelivr tells browsers to keep the file for up to 7 days.
 - **Regenerate the import file** `MyGradMod.html` whenever `bookmarklet-mygradmod.js` changes, so the fixed-copy option stays current.
