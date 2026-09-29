@@ -20,6 +20,12 @@ It adapts the approach of Ben Marwick's [uw-anthro-web-helpers](https://github.c
 
 The script does not collect or use any information about the student outside of MyGrad. The script does not use or contain AI. The data collected by the script are protected by the Family Educational Rights and Privacy Act ([FERPA](https://registrar.washington.edu/staff-faculty/ferpa/)) of 1974 and must not be shared outside of the UW Philosophy advising office without written consent of the student. No data are collected from your computer.
 
+**🔒 A Note on Student Privacy**: Because this repository is public, students or parents may be reading this. Please be assured that student privacy is our highest priority:
+
+-   No AI: This tool does not use or contain AI. No student data are sent to any AI service, public or UW's.
+-   No student data in this repository: It contains code only. The screenshots below show made-up students.
+-   Expert, Authorised Human Oversight: This dashboard is used strictly as a summarization aide by authorized UW faculty/staff with legitimate educational interests. It does not make decisions regarding student progress, grades, or degree milestones. Its flags are prompts for review: authorised UW faculty/staff verify them against official university records before taking any action.
+
 **How MyGradMod handles student data:**
 - **It runs entirely in your browser.** It reads MyGrad data you can already see while logged in, and opens the dashboard in a new tab.
   - Nothing is sent anywhere.
@@ -37,19 +43,31 @@ The script does not collect or use any information about the student outside of 
 - Using your official UW-issued computer, use your UW credentials to log in to [MyGrad Department View](https://facstaff.grad.uw.edu/mygrad-for-faculty-and-staff/#mygrad-faculty-staff-2). These are FERPA-protected education records and this view is only available to authorized faculty and staff in GPC/GPA roles.
 - Google Chrome (the browser it was tested in).
 
-## How to install
+## How to install the bookmarklet
 
-This repository is private, so the bookmarklet can't be loaded through jsDelivr the way the loader bookmarks in Ben's README are. Install it directly, either way:
+A [bookmarklet](https://en.wikipedia.org/wiki/Bookmarklet) is a bookmark stored in your web browser that contains JavaScript commands that make the browser do useful work. This one only works on sites that require UW credentials to access.
 
-- **Import the bookmark file (easiest):**
-  - In Chrome, open **Bookmarks → Bookmark Manager**.
-  - Click the ⋮ menu at the top right and choose **Import bookmarks**.
-  - Choose `MyGradMod.html` from this repository.
-- **Or add it by hand:**
-  - Create a new bookmark named "MyGradMod".
-  - Paste the entire contents of `bookmarklet-mygradmod.js` (it starts with `javascript:`) into the URL field.
+-   For Chrome, look on the top menu bar for "Bookmarks", select "Bookmark Manager"
+-   On the very top right of the Bookmarks page, click the three dots to show a drop-down menu, click on "Add new bookmark"
+-   For the name field, use 'MyGradMod' or similar (quotes not required)
+-   Select all the code in the block under the heading 'Script for the bookmarklet', and paste it into the URL field of the new bookmark box.
+-   Click Save to finish making the bookmarklet. Look for the new bookmark in the list of bookmarks top menu bar for "Bookmarks" or on your bookmark bar.
 
-To update to a newer version, delete the old bookmark and install again.
+#### Script for the bookmarklet:
+
+```
+javascript:(function(){
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/gh/ischnee/MyGradMod@main/bookmarklet-mygradmod.js';
+  s.onload = function() { console.log('[Bookmarklet] Script loaded'); };
+  s.onerror = function() { console.error('[Bookmarklet] Failed to load script'); };
+  document.body.appendChild(s);
+})();
+```
+
+This short script loads the latest version of MyGradMod from this repository each time you click it, so you never need to reinstall it to get updates.
+
+**Prefer a fixed copy that doesn't update itself?** Download `MyGradMod.html` from this repository and import it in Chrome (Bookmark Manager → three dots → Import bookmarks). To update it later, delete that bookmark and import a newer copy.
 
 ## How to use
 
@@ -101,3 +119,9 @@ Hovering explains most numbers in place, e.g. why a cell is marked "stalled".
 ![Students grouped by cohort](screenshots/4-students.png)
 
 ![Older cohorts and outcomes](screenshots/5-history-and-outcomes.png)
+
+## For maintainers
+
+- **Every push reaches every user.** Everyone using the loader runs whatever is on `main` in this repository the next time they click, on a page full of FERPA-protected records. Keep write access to people who need it, and protect those GitHub accounts with two-factor authentication.
+- **Updates can take a while to arrive.** jsDelivr caches the file, so a push can take several hours to reach everyone. To send it out immediately, open `https://purge.jsdelivr.net/gh/ischnee/MyGradMod@main/bookmarklet-mygradmod.js` once after pushing.
+- **Regenerate the import file** `MyGradMod.html` whenever `bookmarklet-mygradmod.js` changes, so the fixed-copy option stays current.
