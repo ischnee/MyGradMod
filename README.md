@@ -78,6 +78,7 @@ This short script loads the latest version of MyGradMod from this repository eac
 
 ## What's on the dashboard
 
+- **Program (top bar):** show one program throughout the page, in the summary, Entering classes and Students, or all programs together.
 - **Program summary:**
   - Students in the program (PhD and MA), on schedule vs. stalled.
   - Flagged students.

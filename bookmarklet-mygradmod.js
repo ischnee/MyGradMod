@@ -80,7 +80,7 @@ javascript:(function(){
     }
     var PAGE_HTML = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>MyGradMod</title><style>'
         + 'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;background:#f4f5f7;color:#222}'
-        + 'header{background:#4b2e83;color:#fff;padding:14px 25px;display:flex;flex-wrap:wrap;gap:6px 20px;align-items:baseline;position:relative}#settings-btn{margin-left:auto;align-self:center;width:50px;height:50px;margin-top:-6px;margin-bottom:-6px;display:flex;align-items:center;justify-content:center;background:transparent;color:#fff;border:0;border-radius:50%;padding:0;font-size:41px;line-height:1;cursor:pointer}#settings-btn:hover,#settings-btn[aria-expanded=true]{background:rgba(255,255,255,.18)}#settings-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}#settings{position:absolute;right:25px;top:100%;margin-top:6px;z-index:30;width:min(620px,calc(100vw - 50px));background:#fff;color:#222;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.2);padding:14px 18px;font-size:14px}#settings[hidden]{display:none}.set-head{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}.set-head strong{color:#4b2e83;font-size:15px}.set-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 22px;margin-bottom:12px}.set-grid label{display:flex;gap:6px;align-items:center;justify-content:space-between}.set-grid input[type=number]{width:52px}'
+        + 'header{background:#4b2e83;color:#fff;padding:14px 25px;display:flex;flex-wrap:wrap;gap:6px 20px;align-items:baseline;position:relative}#program{margin-left:auto;align-self:center;max-width:320px;font:inherit;font-size:14px;padding:6px 9px;border:0;border-radius:6px;background:#fff;color:#2e1a5c;cursor:pointer}#program.on{background:#c3b1f0;font-weight:600;box-shadow:0 0 0 2px #efe9f9}#program:focus-visible{outline:2px solid #fff;outline-offset:2px}#settings-btn{align-self:center;width:50px;height:50px;margin-top:-6px;margin-bottom:-6px;display:flex;align-items:center;justify-content:center;background:transparent;color:#fff;border:0;border-radius:50%;padding:0;font-size:41px;line-height:1;cursor:pointer}#settings-btn:hover,#settings-btn[aria-expanded=true]{background:rgba(255,255,255,.18)}#settings-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}#settings{position:absolute;right:25px;top:100%;margin-top:6px;z-index:30;width:min(620px,calc(100vw - 50px));background:#fff;color:#222;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.2);padding:14px 18px;font-size:14px}#settings[hidden]{display:none}.set-head{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}.set-head strong{color:#4b2e83;font-size:15px}.set-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 22px;margin-bottom:12px}.set-grid label{display:flex;gap:6px;align-items:center;justify-content:space-between}.set-grid input[type=number]{width:52px}'
         + 'header h1{margin:0;font-size:21px}header p{margin:0;color:#e8e3d3;font-size:14px}'
         + '.bar{background:#fff;margin:15px 25px 0;padding:10px 20px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.05);border-left:4px solid #85754d;display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center;font-size:14px}'
         + '.bar strong{color:#4b2e83;text-transform:uppercase;letter-spacing:.5px}.bar label{display:flex;gap:5px;align-items:center}'
@@ -157,16 +157,19 @@ javascript:(function(){
             students.push(named({ link: "", overall: d.Status, quarter: "Not in this quarter's By Quarter list", degreeTitle: d.DegreeTitle, degreeCode: d.DegreeCode, credits: "", d: d }, d.StudentName, d));
         });
         /* Entering-class history: every Philosophy degree student MyGrad returns, current and former, reduced
-           to per-class totals here so no former student's record reaches the dashboard. Certificate and
-           non-matriculated students are left out. Classes start in autumn; summer admits join that autumn. */
+           to per-class totals (one set per program) here so no former student's record reaches the dashboard. Certificate and
+           non-matriculated students are left out. Classes start in autumn; summer admits join that autumn.
+           A student's program is their latest record's degree title, as in Students (the level stands in if there is none). */
         var QN = { WIN: 0, SPR: 1, SUM: 2, AUT: 3 };
-        var history = {};
+        var history = {}, rosterTitle = {};
+        roster.forEach(function(r){ rosterTitle[r.SystemKey] = r.DegreeTitle || ""; });
         Object.keys(detailByKey).forEach(function(k){
             var d = detailByKey[k];
             var yr = parseInt(d.GradAdmitYr, 10);
             if(!yr || QN[d.GradAdmitQtr] === undefined || /-ETHICS-/.test(d.DegreeCode) || /certificate/i.test(d.DegreeTitle) || d.Class === "GNM") return;
             var ay = d.GradAdmitQtr === "AUT" || d.GradAdmitQtr === "SUM" ? yr : yr - 1;
-            var h = history[ay] || (history[ay] = { entered: 0, enrolled: 0, phd: 0, maOnly: 0, left: 0, phdCand: 0, leftCand: 0, years: [], formers: [] });
+            var program = d.DegreeTitle || rosterTitle[k] || (/doct|ph\.?\s?d/i.test(d.DegLevel) ? "Doctoral" : /mast/i.test(d.DegLevel) ? "Master's" : d.DegLevel || "Other");
+            var h = history[ay + "|" + program] || (history[ay + "|" + program] = { ay: ay, program: program, entered: 0, enrolled: 0, phd: 0, maOnly: 0, left: 0, phdCand: 0, leftCand: 0, years: [], formers: [] });
             /* Degree evidence: MyGrad's request fields miss older degrees, so also read "UW degrees", e.g.
                "Spring, 2024 - MASTER OF ARTS (PHILOSOPHY)". Only Philosophy degrees count. */
             var uwPhd = String(d.UWDegrees).match(/(win|spr|sum|aut)\w*,?\s+(\d{4})\s*-\s*DOCTOR OF PHILOSOPHY \(PHILOSOPHY\)/i);
@@ -198,11 +201,9 @@ javascript:(function(){
                 h.formers.push({ name: displayName(d.StudentName, d.StudentPreferredName), outcome: "left", when: d.LastYrEnrolled && d.LastYrEnrolled !== "0" ? ((d.LastQtrEnrolled || "") + " " + d.LastYrEnrolled).trim() : "" });
             }
         });
-        var cohorts = Object.keys(history).map(function(ay){
-            var h = history[ay], ys = h.years.sort(function(a, b){ return a - b; });
-            var order = { left: 0, ma: 1, phd: 2 };
-            h.formers.sort(function(a, b){ return order[a.outcome] - order[b.outcome] || String(a.name).localeCompare(String(b.name)); });
-            return { ay: parseInt(ay, 10), entered: h.entered, enrolled: h.enrolled, phd: h.phd, maOnly: h.maOnly, left: h.left, formers: h.formers, phdYears: ys, phdCand: h.phdCand, leftCand: h.leftCand };
+        var cohorts = Object.keys(history).map(function(key){
+            var h = history[key];
+            return { ay: h.ay, program: h.program, entered: h.entered, enrolled: h.enrolled, phd: h.phd, maOnly: h.maOnly, left: h.left, formers: h.formers, phdYears: h.years, phdCand: h.phdCand, leftCand: h.leftCand };
         });
         var payload = { students: students, cohorts: cohorts, detailLoaded: current !== null, generated: new Date().toISOString() };
         var json = JSON.stringify(payload).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
@@ -223,9 +224,33 @@ javascript:(function(){
         try { view.range = JSON.parse(localStorage.getItem("grad-monitor-classes-shown") || "null"); } catch(e){}
         view.groupByClass = true;
         try { view.groupByClass = localStorage.getItem("grad-monitor-group-by-class") !== "0"; } catch(e){}
+        /* The program picked in the page header applies to the whole page: summary, Entering classes and Students.
+           Programs match by degree title, ignoring case and spacing. */
+        function progKey(p){ return String(p || "").trim().replace(/\s+/g, " ").toLowerCase(); }
+        function inProgram(p){ return view.program === "all" || progKey(p) === view.program; }
         /* Current students only. Students who have finished (PhD awarded) can linger on the By Quarter list; like every other
            PhD they appear in the Entering classes history (a green hollow dot), not in the student tables. */
-        function roster(){ return data.students.filter(function(s){ return !s.done; }); }
+        function roster(){ return data.students.filter(function(s){ return !s.done && inProgram(s.program); }); }
+        /* Entering-class history for the program picked: MyGrad's totals come per class and program, combined here per class. */
+        var mergedFor = null, merged = [];
+        function cohorts(){
+            if(mergedFor === view.program) return merged;
+            var byAY = {}, order = { left: 0, ma: 1, phd: 2 };
+            data.cohorts.filter(function(c){ return inProgram(c.program); }).forEach(function(c){
+                var m = byAY[c.ay] || (byAY[c.ay] = { ay: c.ay, entered: 0, enrolled: 0, phd: 0, maOnly: 0, left: 0, phdCand: 0, leftCand: 0, formers: [], phdYears: [] });
+                ["entered", "enrolled", "phd", "maOnly", "left", "phdCand", "leftCand"].forEach(function(k){ m[k] += c[k] || 0; });
+                m.formers = m.formers.concat(c.formers || []);
+                m.phdYears = m.phdYears.concat(c.phdYears || []);
+            });
+            merged = Object.keys(byAY).map(function(ay){
+                var m = byAY[ay];
+                m.formers.sort(function(a, b){ return order[a.outcome] - order[b.outcome] || String(a.name).localeCompare(String(b.name)); });
+                m.phdYears.sort(function(a, b){ return a - b; });
+                return m;
+            });
+            mergedFor = view.program;
+            return merged;
+        }
 
         function esc(s){ return String(s === null || s === undefined ? "" : s).replace(/[&<>"']/g, function(c){ return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
         function lines(v){ return String(v || "").split(/<br\s*\/?>/i).map(function(x){ return x.replace(/<[^>]*>/g, "").trim(); }).filter(Boolean); }
@@ -353,7 +378,6 @@ javascript:(function(){
                 if(view.show === "inprogram" && stageOf(s) === null) return false;
                 if(view.show === "flagged" && flagsFor(s).length === 0) return false;
                 if(view.show === "limited" && s.d) return false;
-                if(view.program !== "all" && s.program !== view.program) return false;
                 if(q && (s.name + " " + (s.legalName || "") + " " + (s.d ? lines(s.d.AdvisorChair).join(" ") : "")).toLowerCase().indexOf(q) === -1) return false;
                 return true;
             }).sort(function(a, b){
@@ -423,8 +447,7 @@ javascript:(function(){
         var classYears = data.cohorts.map(function(c){ return c.ay; });
         var newestAY = Math.max.apply(null, classYears.concat([currentAY])), oldestAY = Math.min.apply(null, classYears.concat([currentAY]));
         var currentClasses = roster().filter(function(s){ return stageOf(s) !== null; }).map(function(s){ return s.cohort; });
-        var oldestCurrentAY = currentClasses.length ? Math.min.apply(null, currentClasses) : newestAY, hasCurrent = {};
-        currentClasses.forEach(function(ay){ hasCurrent[ay] = true; });
+        var oldestCurrentAY = currentClasses.length ? Math.min.apply(null, currentClasses) : newestAY;
         function sliderStops(){
             var stops = [];
             for(var y = newestAY; y >= oldestAY; y--) if(settings.allYears || y === newestAY || classYears.indexOf(y) !== -1) stops.push(y);
@@ -448,7 +471,8 @@ javascript:(function(){
         function drawSlider(){
             var el = document.getElementById("class-slider"), sel = sliderSel(), stops = sel.stops, last = stops.length - 1, W = el.offsetWidth || 600;
             var pos = function(i){ return last ? i / last * 100 : 0; };
-            var out = "";
+            var out = "", hasCurrent = {};
+            roster().forEach(function(s){ if(stageOf(s) !== null) hasCurrent[s.cohort] = true; });
             /* Each cohort owns the track around its stop: lavender if it has current students, gray if not. A run of skipped years
                (no entering class) is a dashed gray piece in the middle of the gap. The thick selected part runs exactly dot to dot. */
             var piece = function(from, to, cls, title){ return to > from ? "<i class='sl-seg" + cls + "' style='left:" + from + "%;width:calc(" + (to - from) + "% + 1px)'" + (title ? " title='" + title + "'" : "") + "></i>" : ""; };
@@ -477,7 +501,7 @@ javascript:(function(){
 
         function renderCohorts(){
             var bounds = rangeBounds(), from = bounds[0], to = bounds[1];
-            var rows = data.cohorts.filter(function(c){ return c.ay >= from && c.ay <= to; }).sort(function(a, b){ return b.ay - a.ay; });
+            var rows = cohorts().filter(function(c){ return c.ay >= from && c.ay <= to; }).sort(function(a, b){ return b.ay - a.ay; });
             var shown = rows;
             document.getElementById("cohort-note").textContent = rows.length + (rows.length === 1 ? " cohort" : " cohorts");
             drawSlider();
@@ -542,7 +566,9 @@ javascript:(function(){
             document.getElementById("cohorts").innerHTML = "<thead><tr><th class='grp'></th><th class='grp'></th><th class='grp blk now' colspan='6'>Currently enrolled</th><th class='grp spc'></th><th class='grp gone' colspan='5'>No longer enrolled</th></tr>"
                 + "<tr>" + head.replace(/<th /g, "<th rowspan='2' ") + "<th class='phdpair yrs' colspan='2' title='For the PhDs awarded in this class. National median for philosophy: 6.8–7.0 years (NSF Survey of Earned Doctorates, 2024–25)'>Years<br>to PhD</th></tr>"
                 + "<tr><th class='phdpair yrs-sub'>Mean</th><th class='phdpair yrs-sub'>Median</th></tr></thead><tbody>"
-                + (body.join("") || "<tr><td colspan='14' class='small'>No admission dates in MyGrad's records.</td></tr>") + "</tbody>"
+                + (body.join("") || "<tr><td colspan='14' class='small'>" + (!data.cohorts.length ? "No admission dates in MyGrad's records."
+                    : !cohorts().length ? "No entering classes on record for this program. Certificate and non-matriculated students aren't counted in entering classes."
+                    : "No entering classes " + (view.program === "all" ? "" : "in this program ") + "in the years selected.") + "</td></tr>") + "</tbody>"
                 + (body.length ? "<tfoot><tr><td></td><td></td><td class='blk'></td><td></td><td></td><td></td>"
                     + "<td class='blk strip-cell sum' title='Enrolled now, in the classes shown (the filled dots)'><div class='stripwrap'><span class='striptext'><strong class='stnum'>" + enrolledNow + "</strong><span class='small stof'>in program</span></span></div></td>"
                     + "<td class='blk'></td><td class='spc'></td>"
@@ -626,16 +652,16 @@ javascript:(function(){
             levels.sort(function(a, b){ var i = order.indexOf(a), j = order.indexOf(b); return (i < 0 ? 9 : i) - (j < 0 ? 9 : j) || a.localeCompare(b); });
             var others = [["certificate", "certificate"], ["nonmatric", "non-matriculated"], ["nodetails", "without MyGrad details"], ["noadmit", "without an admission date"]]
                 .filter(function(o){ return n(o[0]); }).map(function(o){ return btn(o[0], n(o[0]), o[1]); }).join("");
-            var finished = data.students.filter(function(s){ return s.done; }).length;
+            var finished = data.students.filter(function(s){ return s.done && inProgram(s.program); }).length;
             if(finished) others += "<span class='sm-note' title='Their PhD is awarded, so they appear in the Entering classes history (a green hollow dot), not in Students'><b>" + finished + "</b> finished the PhD</span>";
             document.getElementById("stats").innerHTML = section("In the program" + (levels.length ? ": " + levels.map(function(lv){ return esc(LEVEL_SHORT[lv] || lv); }).join(", ").replace(/, ([^,]*)$/, " and $1") : ""), btn("inprogram", flow.length, "", "big"),
-                    "<div class='sm-parts'>" + levels.map(function(lv){ return btn("level:" + levelSlug(lv), flow.filter(function(s){ return s.level === lv; }).length, esc(LEVEL_SHORT[lv] || lv)); }).join("") + "<span class='sm-sep'></span>" + btn("onschedule", flow.length - stalled, "on schedule") + btn("stalled", stalled, "stalled", "late") + "</div>"
+                    "<div class='sm-parts'>" + levels.map(function(lv){ return btn("level:" + levelSlug(lv), flow.filter(function(s){ return s.level === lv; }).length, esc(LEVEL_SHORT[lv] || lv)); }).join("") + (levels.length ? "<span class='sm-sep'></span>" : "") + btn("onschedule", flow.length - stalled, "on schedule") + btn("stalled", stalled, "stalled", "late") + "</div>"
                     + (others ? "<div class='sm-parts sm-others'><span class='sm-note'>Also on MyGrad's list:</span>" + others + "</div>" : ""))
                 + section("Flagged", btn("flagged", n("flagged"), "", "big late"), "<div class='sm-parts'><span class='sm-note'>any flag in Students, including everyone stalled</span></div>")
                 + section("Funded now", btn("funded", n("funded"), "", "big"), "<div class='sm-parts'><span class='sm-note'>TA position or fellowship this quarter</span></div>"
-                    + "<div class='sm-parts' title='Cleared to teach, speaking requirement met, and no TA position or fellowship this quarter'>" + btn("available", n("available"), "others available to TA") + "</div>")
+                    + "<div class='sm-parts' title='Cleared to teach, speaking requirement met, and no TA position or fellowship this quarter'>" + btn("available", n("available"), n("available") === 1 ? "other available to TA" : "others available to TA") + "</div>")
                 + (function(){
-                    var from = newestAY - 9, t = outcomeStats(data.cohorts.filter(function(c){ return c.ay >= from; }));
+                    var from = newestAY - 9, t = outcomeStats(cohorts().filter(function(c){ return c.ay >= from; }));
                     var avg = t.years.length ? mean(t.years).toFixed(1) : "–";
                     return "<section class='sm-out'><h4><button type='button' class='sm-win' title='Show these cohorts in Entering classes'>Outcomes · " + classLabel(from) + " to " + classLabel(newestAY) + "</button></h4>"
                         + "<div class='sm-bigs'><div class='sm-stat' title='" + esc(t.enrolled ? PARTIAL_HOVER : "") + "'><div class='sm-big'>" + phdShare(t) + "</div><div class='sm-parts'><span class='sm-note'>earned the PhD, of those who started</span></div></div>"
@@ -655,8 +681,9 @@ javascript:(function(){
             var views = [["inprogram", "In the program", all.filter(function(s){ return stageOf(s) !== null; }).length], ["flagged", "Flagged", all.filter(function(s){ return flagsFor(s).length > 0; }).length],
                     ["limited", "Limited info", all.filter(function(s){ return !s.d; }).length], ["all", "All", all.length]]
                 .filter(function(v){ return v[0] !== "limited" || v[2] || view.show === "limited"; });
-            var onList = data.students.filter(function(s){ return s.onRoster; }).length, finishedAll = data.students.filter(function(s){ return s.done; }).length, extra = data.students.filter(function(s){ return !s.onRoster && !s.done; }).length;
-            var allTip = "MyGrad's By Quarter list: " + onList + (finishedAll ? " · minus " + finishedAll + " who finished the PhD (shown in Entering classes)" : "") + (extra ? " · plus " + extra + " on MyGrad's current list but not this quarter's" : "");
+            var mine = data.students.filter(function(s){ return inProgram(s.program); });
+            var onList = mine.filter(function(s){ return s.onRoster; }).length, finishedAll = mine.filter(function(s){ return s.done; }).length, extra = mine.filter(function(s){ return !s.onRoster && !s.done; }).length;
+            var allTip = "MyGrad's By Quarter list" + (view.program === "all" ? "" : ", this program only") + ": " + onList + (finishedAll ? " · minus " + finishedAll + " who finished the PhD (shown in Entering classes)" : "") + (extra ? " · plus " + extra + " on MyGrad's current list but not this quarter's" : "");
             document.getElementById("show-seg").innerHTML = views.map(function(v){ var on = view.show === v[0]; return "<button type='button' data-show='" + v[0] + "' aria-pressed='" + on + "'" + (v[0] === "all" ? " title='" + esc(allTip) + "'" : "") + (on ? " class='on'" : "") + ">" + v[1] + " <b>" + v[2] + "</b></button>"; }).join("");
             /* By cohort: a first column labels each entering class once, with a continuous line down beside its students; the Year
                column repeats it, so it is dropped. Rows keep the chosen sort within each cohort. */
@@ -705,6 +732,7 @@ javascript:(function(){
         }
 
         document.body.innerHTML = "<header><h1>MyGradMod</h1><p>MyGrad By Quarter roster + student details · loaded " + esc(now.toLocaleString()) + "</p>"
+            + "<select id='program' aria-label='Program' title='Show one program throughout the page: summary, Entering classes and Students'><option value='all'>All programs</option></select>"
             + "<button type='button' id='settings-btn' aria-expanded='false' aria-controls='settings' aria-label='Settings' title='Settings'>⚙</button>"
             + "<div id='settings' hidden><div class='set-head'><strong>Flag thresholds</strong><span class='small'>Year in program; year 1 = first year. Defaults follow the Graduate Handbook.</span></div><div class='set-grid'>"
             + "<label>Still in MA phase after year <input type='number' min='1' max='6' id='maBy'></label>"
@@ -728,7 +756,7 @@ javascript:(function(){
             + "</div></div>"
             + "<div class='panel' id='panel-students'><h2 class='dark-head'><button type='button' class='panel-toggle' data-panel='students' aria-expanded='true' aria-controls='body-students' title='Collapse or expand this section'><span class='chev'>▼</span>Students</button>"
             + "<span class='seg' id='show-seg' role='group' aria-label='Which students'></span><span class='bar-fill'></span>"
-            + "<select id='program' aria-label='Program'><option value='all'>All programs</option></select><input type='search' id='search' placeholder='Search name or advisor'>"
+            + "<input type='search' id='search' placeholder='Search name or advisor'>"
             + "<label class='bar-opt'><input type='checkbox' id='group-by-class'> By cohort</label></h2>"
             + "<div class='panel-body' id='body-students'><div id='hl-note' class='hl-line small'></div><table id='roster'></table></div></div>"
             + "<div id='tip' role='tooltip'></div>"
@@ -737,9 +765,12 @@ javascript:(function(){
             + "Default thresholds follow the Philosophy Graduate Handbook timeline, whose benchmarks pause during official leave; the 10-year doctoral and 6-year master's limits (Grad School policy) include leave. "
             + "Check a student's leave history and the current policies before acting on a flag.</footer>";
 
-        var programs = [];
-        data.students.forEach(function(s){ if(programs.indexOf(s.program) === -1) programs.push(s.program); });
-        programs.sort().forEach(function(p){ var o = document.createElement("option"); o.value = p; o.textContent = p; document.getElementById("program").appendChild(o); });
+        /* Every program on MyGrad's list or in the entering-class history, spelled as current students' records spell it. */
+        var programs = {};
+        data.students.concat(data.cohorts).forEach(function(x){ var k = progKey(x.program); if(k && !programs[k]) programs[k] = x.program; });
+        Object.keys(programs).sort(function(a, b){ return programs[a].localeCompare(programs[b]); }).forEach(function(k){
+            var o = document.createElement("option"); o.value = k; o.textContent = programs[k]; document.getElementById("program").appendChild(o);
+        });
 
         ["maBy", "advisorBy", "docCommBy", "phcBy", "readingBy", "fundingYears", "docWarn", "mastersWarn", "gpaMin"].forEach(function(k){
             var el = document.getElementById(k);
@@ -792,7 +823,7 @@ javascript:(function(){
                     + flaggedStudents.map(function(s){ return "<li class='tn'>" + esc(s.name) + " <span style='color:#cbbfe6'>— " + esc(flagsFor(s).map(function(f){ return f[1]; }).join(", ")) + "</span></li>"; }).join("") + "</ul>", e);
             }
             if(former){
-                var fc0 = data.cohorts.filter(function(c){ return c.ay === ay; })[0], fr = fc0 && fc0.formers[parseInt(former.getAttribute("data-former"), 10)];
+                var fc0 = cohorts().filter(function(c){ return c.ay === ay; })[0], fr = fc0 && fc0.formers[parseInt(former.getAttribute("data-former"), 10)];
                 if(!fr) return hideTip();
                 var took = fr.outcome === "phd" && typeof fr.years === "number" ? "<div class='tn'>" + Math.round(fr.years * 100) / 100 + " years to PhD</div>" : "";
                 return showTip("<div class='th'" + (took ? "" : " style='margin:0'") + ">" + esc(fr.name + " · " + OUTCOME[fr.outcome].label + (fr.outcome === "left" ? (fr.when ? ", last enrolled " + fr.when : "") : fr.when ? " " + fr.when : "")) + "</div>" + took, e);
@@ -935,7 +966,7 @@ javascript:(function(){
             try { localStorage.setItem("grad-monitor-group-by-class", this.checked ? "1" : "0"); } catch(e){}
             render();
         });
-        document.getElementById("program").addEventListener("change", function(){ view.program = this.value; render(); });
+        document.getElementById("program").addEventListener("change", function(){ view.program = this.value; this.classList.toggle("on", this.value !== "all"); render(); });
         document.getElementById("search").addEventListener("input", function(){ view.search = this.value; render(); });
         document.getElementById("roster").addEventListener("click", function(e){
             var g = e.target.closest("td.coh[data-cohort]");
