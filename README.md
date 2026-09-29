@@ -120,6 +120,15 @@ Hovering explains most numbers in place, e.g. why a cell is marked "stalled".
 
 ![Older cohorts and outcomes](screenshots/5-history-and-outcomes.png)
 
+**Checking a historical period.** Drag the slider's two dots to any run of entering classes, here 2007–08 through 2016–17. The table's sum row then gives that period's totals:
+- how many left with no degree, left with an MA, or earned the PhD
+- the share of each among those who left, which add to 100%
+- mean and median years to PhD
+
+Move the dots to another decade to compare.
+
+![A historical period selected with the slider](screenshots/6-historical-period.png)
+
 ## For maintainers
 
 - **Every push reaches every user.** Everyone using the loader runs whatever is on `main` in this repository the next time they click, on a page full of FERPA-protected records. Keep write access to people who need it, and protect those GitHub accounts with two-factor authentication.
