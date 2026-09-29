@@ -1,5 +1,5 @@
 javascript:(function(){
-    /* MyGradMod: run on MyGrad > Students > By Quarter after picking a quarter.
+    /* MyGradMod: run on MyGrad > Students > Student Lists > By Quarter after picking a quarter.
        Joins the By Quarter roster (every student, with status) to MyGrad's student detail records
        (milestones, committees, funding) by SystemKey, and opens a dashboard tab. Only roster students
        (plus any current student missing from the roster) and only the fields in KEEP reach the
@@ -27,7 +27,7 @@ javascript:(function(){
         shade.querySelector("button").focus();
     }
     if(location.pathname.indexOf("/mgp-dept.stu.detail/home/studentlistnew") === -1){
-        notice("Open MyGrad > Students > By Quarter, pick a quarter, then click this bookmarklet again.");
+        notice("Open MyGrad > Students > Student Lists > By Quarter, pick a quarter, then click this bookmarklet again.");
         return;
     }
     var rosterEntry = performance.getEntriesByType("resource").filter(function(e){ return e.name.indexOf("getStudentListNew") !== -1; }).pop();

@@ -1,6 +1,6 @@
 # MyGradMod
 
-A browser bookmarklet for the UW Philosophy graduate program. Run it on **MyGrad → Students → By Quarter** and it opens a dashboard of the whole program:
+A browser bookmarklet for the UW Philosophy graduate program. Run it on **MyGrad → Students → Student Lists → By Quarter** and it opens a dashboard of the whole program:
 - a summary of where the program stands
 - every entering class's progress and outcomes
 - each current student's milestones, flags and funding
@@ -72,7 +72,7 @@ This short script loads the latest version of MyGradMod from this repository eac
 ## How to use
 
 - Log in to MyGrad Department View as described under Requirements.
-- Go to **Students → By Quarter** and pick a quarter.
+- Go to **Students → Student Lists → By Quarter** and pick a quarter.
 - Click the **MyGradMod** bookmark. The dashboard opens in a new tab. If Chrome blocks it, allow pop-ups for MyGrad.
 - Close the dashboard tab when finished.
 
