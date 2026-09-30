@@ -1,6 +1,6 @@
 javascript:(function(){
     /* MyGradMod: run on MyGrad > Students > Student Lists > By Quarter (any quarter).
-       Joins the current quarter's By Quarter roster (every student, with status) to MyGrad's student detail records
+       Joins the By Quarter rosters for the current and next quarters (every student, with status) to MyGrad's student detail records
        (milestones, committees, funding) by SystemKey, and opens a dashboard tab. Only roster students
        (plus any current student missing from the roster) and only the fields in KEEP reach the
        dashboard; former students appear only in class totals and, on hover, as a name and outcome
@@ -30,15 +30,23 @@ javascript:(function(){
         notice("Open MyGrad > Students > Student Lists > By Quarter, then click this bookmarklet again.");
         return;
     }
-    /* Students come from MyGrad's By Quarter list for the current quarter, whatever quarter the page shows, so the
-       dashboard always covers everyone in the program now. MyGrad numbers quarters 1 Winter, 2 Spring, 3 Summer,
-       4 Autumn, with the calendar year (from the page's own requests, Sept 2026). Autumn counts from September; April
-       to August use Spring's list, since graduate students aren't expected to register for summer. status=0 and
-       degree=0 are the page's own "all statuses" and "all degrees". */
-    var today = new Date(), month = today.getMonth();
-    var rosterQuarter = month >= 8 ? { code: 4, name: "Autumn" } : month <= 2 ? { code: 1, name: "Winter" } : { code: 2, name: "Spring" };
-    rosterQuarter.label = rosterQuarter.name + " " + today.getFullYear();
-    var rosterUrl = location.origin + "/mgp-dept.stu.detail/home/getStudentListNew?quarter=" + rosterQuarter.code + "&year=" + today.getFullYear() + "&status=0&degree=0";
+    /* Students come from MyGrad's By Quarter lists for the current quarter and the next one, whatever quarter the page
+       shows. MyGrad gives one quarter's list at a time, and neither list alone has everyone: the next quarter's lacks
+       students finishing now, and the current one lacks some who are only on the next (it was the only list used for a
+       day in Sept 2026, and people went missing). Together they cover everyone in the program now.
+       MyGrad numbers quarters 1 Winter, 2 Spring, 3 Summer, 4 Autumn, with the calendar year (from the page's own
+       requests, Sept 2026). The current quarter: Autumn from September, Winter January to March, Spring April to August
+       (graduate students aren't expected to register for summer). The next: Autumn → Winter, Winter → Spring, Spring →
+       Summer. status=0 and degree=0 are the page's own "all statuses" and "all degrees". */
+    var QNAME = { 1: "Winter", 2: "Spring", 3: "Summer", 4: "Autumn" };
+    var today = new Date(), month = today.getMonth(), thisYear = today.getFullYear();
+    var thisQ = month >= 8 ? { code: 4, year: thisYear } : month <= 2 ? { code: 1, year: thisYear } : { code: 2, year: thisYear };
+    var nextQ = thisQ.code === 4 ? { code: 1, year: thisYear + 1 } : { code: thisQ.code + 1, year: thisYear };
+    [thisQ, nextQ].forEach(function(q){
+        q.label = QNAME[q.code] + " " + q.year;
+        q.url = location.origin + "/mgp-dept.stu.detail/home/getStudentListNew?quarter=" + q.code + "&year=" + q.year + "&status=0&degree=0";
+    });
+    var listsLabel = thisQ.label + " and " + nextQ.label;
     var w = window.open("", "_blank");
     if(!w){
         notice("Pop-up blocked! Allow pop-ups for this site, then click again.");
@@ -140,11 +148,15 @@ javascript:(function(){
     var OTHERS = Object.assign({}, CURRENT, { cs_preregistered: -1, cs_enrolled: -1, cs_onleave: -1, cs_afterqtrstart: -1, cs_beforeqtrstart: -1, cs_lastquarter: 4, cs_inactive: 5 });
 
     Promise.all([
-        getJson(rosterUrl),
+        getJson(thisQ.url),
         getJson(detailUrl, CURRENT).catch(function(){ return null; }),
-        getJson(detailUrl, OTHERS).catch(function(){ return null; })
+        getJson(detailUrl, OTHERS).catch(function(){ return null; }),
+        getJson(nextQ.url).catch(function(){ return null; })
     ]).then(function(res){
-        var roster = rowsOf(res[0]);
+        /* The current quarter's row wins for a student on both lists; a student only on the next quarter's list keeps its row. */
+        var roster = rowsOf(res[0]), onThisList = {};
+        roster.forEach(function(r){ onThisList[r.SystemKey] = true; });
+        (res[3] === null ? [] : rowsOf(res[3])).forEach(function(r){ if(!onThisList[r.SystemKey]){ r.nextOnly = true; roster.push(r); } });
         var current = res[1] === null ? null : rowsOf(res[1]);
         var detailByKey = {}, currentKeys = {};
         /* The current list's record wins: a current student can also have an older, inactive record (e.g. an earlier program)
@@ -170,13 +182,13 @@ javascript:(function(){
         var students = roster.map(function(r){
             seen[r.SystemKey] = true;
             var d = detailByKey[r.SystemKey] || null;
-            return named({ onRoster: true, link: links[String(r.StudentID)] || (makeLink ? makeLink(r) : ""), overall: r.StudentStatusDesc || "", quarter: r.quarterStatus || "",
+            return named({ onRoster: true, link: links[String(r.StudentID)] || (makeLink ? makeLink(r) : ""), overall: r.StudentStatusDesc || "", quarter: (r.quarterStatus || "") + (r.nextOnly ? " (" + nextQ.label + ")" : ""),
                 degreeTitle: r.DegreeTitle || "", degreeCode: r.DegreeCode || "", credits: r.credits, d: d }, r.LegalName || (d ? d.StudentName : ""), d);
         });
         Object.keys(currentKeys).forEach(function(k){
             if(seen[k]) return;
             var d = detailByKey[k];
-            students.push(named({ link: makeLink ? makeLink({ SystemKey: k }) : "", overall: d.Status, quarter: "Not on MyGrad's " + rosterQuarter.label + " list", degreeTitle: d.DegreeTitle, degreeCode: d.DegreeCode, credits: "", d: d }, d.StudentName, d));
+            students.push(named({ link: makeLink ? makeLink({ SystemKey: k }) : "", overall: d.Status, quarter: "Not on MyGrad's " + listsLabel + " lists", degreeTitle: d.DegreeTitle, degreeCode: d.DegreeCode, credits: "", d: d }, d.StudentName, d));
         });
         /* Entering-class history: every Philosophy degree student MyGrad returns, current and former, reduced
            to per-class totals (one set per program) here so no former student's record reaches the dashboard. Certificate and
@@ -227,7 +239,7 @@ javascript:(function(){
             var h = history[key];
             return { ay: h.ay, program: h.program, entered: h.entered, enrolled: h.enrolled, phd: h.phd, maOnly: h.maOnly, left: h.left, formers: h.formers, phdYears: h.years, phdCand: h.phdCand, leftCand: h.leftCand };
         });
-        var payload = { students: students, cohorts: cohorts, detailLoaded: current !== null, rosterQuarter: rosterQuarter.label, generated: new Date().toISOString() };
+        var payload = { students: students, cohorts: cohorts, detailLoaded: current !== null, rosterQuarter: listsLabel, generated: new Date().toISOString() };
         var json = JSON.stringify(payload).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
         w.document.open();
         w.document.write(PAGE_HTML + "<script>(" + dashboard.toString() + ")(" + json + ");<\/script></body></html>");
@@ -705,7 +717,7 @@ javascript:(function(){
                 .filter(function(v){ return v[0] !== "limited" || v[2] || view.show === "limited"; });
             var mine = data.students.filter(function(s){ return inProgram(s.program); });
             var onList = mine.filter(function(s){ return s.onRoster; }).length, finishedAll = mine.filter(function(s){ return s.done; }).length, extra = mine.filter(function(s){ return !s.onRoster && !s.done; }).length;
-            var allTip = "MyGrad's " + data.rosterQuarter + " By Quarter list" + (view.program === "all" ? "" : ", this program only") + ": " + onList + (finishedAll ? " · minus " + finishedAll + " who finished the PhD (shown in Entering classes)" : "") + (extra ? " · plus " + extra + " on MyGrad's current list but not this quarter's" : "");
+            var allTip = "MyGrad's " + data.rosterQuarter + " By Quarter lists, combined" + (view.program === "all" ? "" : ", this program only") + ": " + onList + (finishedAll ? " · minus " + finishedAll + " who finished the PhD (shown in Entering classes)" : "") + (extra ? " · plus " + extra + " on MyGrad's current list but on neither quarter's list" : "");
             document.getElementById("show-seg").innerHTML = views.map(function(v){ var on = view.show === v[0]; return "<button type='button' data-show='" + v[0] + "' aria-pressed='" + on + "'" + (v[0] === "all" ? " title='" + esc(allTip) + "'" : "") + (on ? " class='on'" : "") + ">" + v[1] + " <b>" + v[2] + "</b></button>"; }).join("");
             /* By cohort: a first column labels each entering class once, with a continuous line down beside its students; the Year
                column repeats it, so it is dropped. Rows keep the chosen sort within each cohort. */
@@ -753,7 +765,7 @@ javascript:(function(){
             renderCohorts();
         }
 
-        document.body.innerHTML = "<header><h1>MyGradMod</h1><p><span title='Students and their statuses come from MyGrad’s By Quarter list for the current quarter, whatever quarter the MyGrad page shows'>MyGrad’s " + esc(data.rosterQuarter) + " list</span> + student details · loaded " + esc(now.toLocaleString()) + "</p>"
+        document.body.innerHTML = "<header><h1>MyGradMod</h1><p><span title='Students and their statuses come from MyGrad’s By Quarter lists for the current quarter and the next one, whatever quarter the MyGrad page shows'>MyGrad’s " + esc(data.rosterQuarter) + " lists</span> + student details · loaded " + esc(now.toLocaleString()) + "</p>"
             + "<select id='program' aria-label='Program' title='Show one program throughout the page: summary, Entering classes and Students'><option value='all'>All programs</option></select>"
             + "<button type='button' id='settings-btn' aria-expanded='false' aria-controls='settings' aria-label='Settings' title='Settings'>⚙</button>"
             + "<div id='settings' hidden><div class='set-head'><strong>Flag thresholds</strong><span class='small'>Year in program; year 1 = first year. Defaults follow the Graduate Handbook.</span></div><div class='set-grid'>"
