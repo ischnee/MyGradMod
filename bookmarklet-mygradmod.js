@@ -1,6 +1,6 @@
 javascript:(function(){
-    /* MyGradMod: run on MyGrad > Students > Student Lists > By Quarter after picking a quarter.
-       Joins the By Quarter roster (every student, with status) to MyGrad's student detail records
+    /* MyGradMod: run on MyGrad > Students > Student Lists > By Quarter (any quarter).
+       Joins the current quarter's By Quarter roster (every student, with status) to MyGrad's student detail records
        (milestones, committees, funding) by SystemKey, and opens a dashboard tab. Only roster students
        (plus any current student missing from the roster) and only the fields in KEEP reach the
        dashboard; former students appear only in class totals and, on hover, as a name and outcome
@@ -27,14 +27,18 @@ javascript:(function(){
         shade.querySelector("button").focus();
     }
     if(location.pathname.indexOf("/mgp-dept.stu.detail/home/studentlistnew") === -1){
-        notice("Open MyGrad > Students > Student Lists > By Quarter, pick a quarter, then click this bookmarklet again.");
+        notice("Open MyGrad > Students > Student Lists > By Quarter, then click this bookmarklet again.");
         return;
     }
-    var rosterEntry = performance.getEntriesByType("resource").filter(function(e){ return e.name.indexOf("getStudentListNew") !== -1; }).pop();
-    if(!rosterEntry){
-        notice("Pick a quarter on the By Quarter page and wait for the student list to load, then click again.");
-        return;
-    }
+    /* Students come from MyGrad's By Quarter list for the current quarter, whatever quarter the page shows, so the
+       dashboard always covers everyone in the program now. MyGrad numbers quarters 1 Winter, 2 Spring, 3 Summer,
+       4 Autumn, with the calendar year (from the page's own requests, Sept 2026). Autumn counts from September; April
+       to August use Spring's list, since graduate students aren't expected to register for summer. status=0 and
+       degree=0 are the page's own "all statuses" and "all degrees". */
+    var today = new Date(), month = today.getMonth();
+    var rosterQuarter = month >= 8 ? { code: 4, name: "Autumn" } : month <= 2 ? { code: 1, name: "Winter" } : { code: 2, name: "Spring" };
+    rosterQuarter.label = rosterQuarter.name + " " + today.getFullYear();
+    var rosterUrl = location.origin + "/mgp-dept.stu.detail/home/getStudentListNew?quarter=" + rosterQuarter.code + "&year=" + today.getFullYear() + "&status=0&degree=0";
     var w = window.open("", "_blank");
     if(!w){
         notice("Pop-up blocked! Allow pop-ups for this site, then click again.");
@@ -43,7 +47,8 @@ javascript:(function(){
     w.document.write("<title>MyGradMod</title><p style='font-family:sans-serif;padding:20px;color:#4b2e83'>Loading student data from MyGrad...</p>");
     w.document.close();
 
-    /* Links to each student's MyGrad record, read from the By Quarter table and keyed by Student ID. */
+    /* Links to each student's MyGrad record, read from the By Quarter table and keyed by Student ID. The table shows the
+       page's quarter, so linkMaker (below) builds links for students missing from it. */
     var links = {};
     document.querySelectorAll("table").forEach(function(table){
         var heads = Array.prototype.map.call(table.querySelectorAll("th"), function(th){ return th.textContent.trim().toLowerCase(); });
@@ -72,6 +77,23 @@ javascript:(function(){
             if(!r.ok) throw new Error("HTTP " + r.status);
             return r.json();
         });
+    }
+    /* Builds a record link for a roster student missing from the page's table, on the pattern of the table's own links:
+       each contains the student's SystemKey (or Student ID) exactly once. The pattern is used only if every link on the
+       page that can be matched to the roster follows it; otherwise those students simply have no link. */
+    function linkMaker(roster){
+        var pairs = roster.filter(function(r){ return links[String(r.StudentID)]; });
+        var fields = ["SystemKey", "StudentID"];
+        for(var i = 0; i < fields.length && pairs.length; i++){
+            var field = fields[i], shape = null, ok = pairs.every(function(r){
+                var parts = links[String(r.StudentID)].split(String(r[field]));
+                if(parts.length !== 2) return false;
+                if(shape === null) shape = parts;
+                return parts[0] === shape[0] && parts[1] === shape[1];
+            });
+            if(ok) return function(r){ return r[field] === undefined || r[field] === null || r[field] === "" ? "" : shape[0] + r[field] + shape[1]; };
+        }
+        return null;
     }
     function rowsOf(d){
         if(Array.isArray(d)) return d;
@@ -118,7 +140,7 @@ javascript:(function(){
     var OTHERS = Object.assign({}, CURRENT, { cs_preregistered: -1, cs_enrolled: -1, cs_onleave: -1, cs_afterqtrstart: -1, cs_beforeqtrstart: -1, cs_lastquarter: 4, cs_inactive: 5 });
 
     Promise.all([
-        getJson(rosterEntry.name),
+        getJson(rosterUrl),
         getJson(detailUrl, CURRENT).catch(function(){ return null; }),
         getJson(detailUrl, OTHERS).catch(function(){ return null; })
     ]).then(function(res){
@@ -144,17 +166,17 @@ javascript:(function(){
             return words.pop() + ", " + words.join(" ");
         }
         function named(o, legal, d){ o.name = displayName(legal, d && d.StudentPreferredName); if(o.name !== legal) o.legalName = legal; return o; }
-        var seen = {};
+        var seen = {}, makeLink = linkMaker(roster);
         var students = roster.map(function(r){
             seen[r.SystemKey] = true;
             var d = detailByKey[r.SystemKey] || null;
-            return named({ onRoster: true, link: links[String(r.StudentID)] || "", overall: r.StudentStatusDesc || "", quarter: r.quarterStatus || "",
+            return named({ onRoster: true, link: links[String(r.StudentID)] || (makeLink ? makeLink(r) : ""), overall: r.StudentStatusDesc || "", quarter: r.quarterStatus || "",
                 degreeTitle: r.DegreeTitle || "", degreeCode: r.DegreeCode || "", credits: r.credits, d: d }, r.LegalName || (d ? d.StudentName : ""), d);
         });
         Object.keys(currentKeys).forEach(function(k){
             if(seen[k]) return;
             var d = detailByKey[k];
-            students.push(named({ link: "", overall: d.Status, quarter: "Not in this quarter's By Quarter list", degreeTitle: d.DegreeTitle, degreeCode: d.DegreeCode, credits: "", d: d }, d.StudentName, d));
+            students.push(named({ link: makeLink ? makeLink({ SystemKey: k }) : "", overall: d.Status, quarter: "Not on MyGrad's " + rosterQuarter.label + " list", degreeTitle: d.DegreeTitle, degreeCode: d.DegreeCode, credits: "", d: d }, d.StudentName, d));
         });
         /* Entering-class history: every Philosophy degree student MyGrad returns, current and former, reduced
            to per-class totals (one set per program) here so no former student's record reaches the dashboard. Certificate and
@@ -205,13 +227,13 @@ javascript:(function(){
             var h = history[key];
             return { ay: h.ay, program: h.program, entered: h.entered, enrolled: h.enrolled, phd: h.phd, maOnly: h.maOnly, left: h.left, formers: h.formers, phdYears: h.years, phdCand: h.phdCand, leftCand: h.leftCand };
         });
-        var payload = { students: students, cohorts: cohorts, detailLoaded: current !== null, generated: new Date().toISOString() };
+        var payload = { students: students, cohorts: cohorts, detailLoaded: current !== null, rosterQuarter: rosterQuarter.label, generated: new Date().toISOString() };
         var json = JSON.stringify(payload).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
         w.document.open();
         w.document.write(PAGE_HTML + "<script>(" + dashboard.toString() + ")(" + json + ");<\/script></body></html>");
         w.document.close();
     }).catch(function(err){
-        w.document.body.innerHTML = "<p style='font-family:sans-serif;padding:20px;color:#b91c1c'>Couldn't load the student list from MyGrad (" + err.message + "). Reload the By Quarter page, pick a quarter, and try again.</p>";
+        w.document.body.innerHTML = "<p style='font-family:sans-serif;padding:20px;color:#b91c1c'>Couldn't load the student list from MyGrad (" + err.message + "). Reload the By Quarter page and try again.</p>";
     });
 
     function dashboard(data){
@@ -683,7 +705,7 @@ javascript:(function(){
                 .filter(function(v){ return v[0] !== "limited" || v[2] || view.show === "limited"; });
             var mine = data.students.filter(function(s){ return inProgram(s.program); });
             var onList = mine.filter(function(s){ return s.onRoster; }).length, finishedAll = mine.filter(function(s){ return s.done; }).length, extra = mine.filter(function(s){ return !s.onRoster && !s.done; }).length;
-            var allTip = "MyGrad's By Quarter list" + (view.program === "all" ? "" : ", this program only") + ": " + onList + (finishedAll ? " · minus " + finishedAll + " who finished the PhD (shown in Entering classes)" : "") + (extra ? " · plus " + extra + " on MyGrad's current list but not this quarter's" : "");
+            var allTip = "MyGrad's " + data.rosterQuarter + " By Quarter list" + (view.program === "all" ? "" : ", this program only") + ": " + onList + (finishedAll ? " · minus " + finishedAll + " who finished the PhD (shown in Entering classes)" : "") + (extra ? " · plus " + extra + " on MyGrad's current list but not this quarter's" : "");
             document.getElementById("show-seg").innerHTML = views.map(function(v){ var on = view.show === v[0]; return "<button type='button' data-show='" + v[0] + "' aria-pressed='" + on + "'" + (v[0] === "all" ? " title='" + esc(allTip) + "'" : "") + (on ? " class='on'" : "") + ">" + v[1] + " <b>" + v[2] + "</b></button>"; }).join("");
             /* By cohort: a first column labels each entering class once, with a continuous line down beside its students; the Year
                column repeats it, so it is dropped. Rows keep the chosen sort within each cohort. */
@@ -731,7 +753,7 @@ javascript:(function(){
             renderCohorts();
         }
 
-        document.body.innerHTML = "<header><h1>MyGradMod</h1><p>MyGrad By Quarter roster + student details · loaded " + esc(now.toLocaleString()) + "</p>"
+        document.body.innerHTML = "<header><h1>MyGradMod</h1><p><span title='Students and their statuses come from MyGrad’s By Quarter list for the current quarter, whatever quarter the MyGrad page shows'>MyGrad’s " + esc(data.rosterQuarter) + " list</span> + student details · loaded " + esc(now.toLocaleString()) + "</p>"
             + "<select id='program' aria-label='Program' title='Show one program throughout the page: summary, Entering classes and Students'><option value='all'>All programs</option></select>"
             + "<button type='button' id='settings-btn' aria-expanded='false' aria-controls='settings' aria-label='Settings' title='Settings'>⚙</button>"
             + "<div id='settings' hidden><div class='set-head'><strong>Flag thresholds</strong><span class='small'>Year in program; year 1 = first year. Defaults follow the Graduate Handbook.</span></div><div class='set-grid'>"

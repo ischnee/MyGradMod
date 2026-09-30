@@ -72,7 +72,7 @@ This short script loads the latest version of MyGradMod from this repository eac
 ## How to use
 
 - Log in to MyGrad Department View as described under Requirements.
-- Go to **Students → Student Lists → By Quarter** and pick a quarter.
+- Go to **Students → Student Lists → By Quarter**. Any quarter can be showing: MyGradMod always uses the current quarter's list, and names it in the dashboard's header.
 - Click the **MyGradMod** bookmark. The dashboard opens in a new tab. If Chrome blocks it, allow pop-ups for MyGrad.
 - Close the dashboard tab when finished.
 
