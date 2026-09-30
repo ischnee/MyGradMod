@@ -107,48 +107,16 @@ javascript:(function(){
     /* The full history. MyGrad's detail records miss many former students: in Sept 2026, 60 of the doctoral-track
        students on its quarter lists since 1990 had no detail record. So once the dashboard is open, every quarter's list
        is read, from next year back until five years in a row are empty (about a minute; MyGrad answers one request at a
-       time). Students found only there, in the PhD (Pre-Doctor, Doctor of Philosophy) or MA program, join the entering
-       class of their first quarter in it. Their last list entry gives the outcome: "Graduated" with the Doctor of
-       Philosophy title is a PhD (16 of 17 PhDs with detail records ended that way, and none of 29 others); "Graduated"
-       without it is an MA; anything else means they left, with an MA if any list shows them "Graduated" in the Master
-       of Arts program (older records only: none of 34 recent MAs with detail records show one). Only these reach the dashboard: counts per class, and for each
-       student the name, outcome, quarter and years to PhD shown on hover, as for other former students. */
+       time). The history is then rebuilt from both sources (buildHistory, which places each student once) and replaces
+       the first one. Only what buildHistory keeps reaches the dashboard: counts per class, and for each former student
+       the name, outcome, quarter and years to PhD shown on hover. */
     function loadListHistory(ctx){
-        var QS = { 1: "Win", 2: "Spr", 3: "Sum", 4: "Aut" }, onLists = {}, year = nextQ.year, empty = 0, oldest = null;
+        var onLists = {}, year = nextQ.year, empty = 0, oldest = null;
         var tell = function(msg){ try { if(!w.closed && w.mygradmodHistory) w.mygradmodHistory(msg); } catch(e){} };
         var finish = function(){
-            var extra = {}, found = 0;
-            Object.keys(onLists).forEach(function(k){
-                if(ctx.details[k] || ctx.current[k]) return;
-                var rs = onLists[k].sort(function(a, b){ return a.idx - b.idx; });
-                var inProgram = rs.filter(function(r){ return /DOCTOR OF PHILOSOPHY|PRE-DOCTOR|MASTER OF ARTS/i.test(r.title) && !/CERTIFICATE|^\s*GNM/i.test(r.title); });
-                if(!inProgram.length) return;
-                var first = inProgram[0], last = rs[rs.length - 1], program = inProgram[inProgram.length - 1].title.trim();
-                var ay = first.code >= 3 ? first.year : first.year - 1;   /* Summer and Autumn begin that year's class */
-                var h = extra[ay + "|" + program] || (extra[ay + "|" + program] = { ay: ay, program: program, entered: 0, enrolled: 0, phd: 0, maOnly: 0, left: 0, phdCand: 0, leftCand: 0,
-                    formers: [], phdYears: [], listedEntered: 0, listedPhd: 0, listedMa: 0, listedLeft: 0 });
-                var graduated = /graduated/i.test(last.status), phdTitle = rs.some(function(r){ return /DOCTOR OF PHILOSOPHY/i.test(r.title); });
-                var when = QS[last.code] + " " + last.year;
-                h.entered++; h.listedEntered++; found++;
-                if(graduated && phdTitle){
-                    var took = (last.idx - first.idx) / 4;
-                    h.phd++; h.listedPhd++; h.phdYears.push(took);
-                    h.formers.push({ name: last.name, outcome: "phd", when: when, years: took, fromLists: true });
-                } else if(graduated){
-                    h.maOnly++; h.listedMa++;
-                    h.formers.push({ name: last.name, outcome: "ma", when: when, fromLists: true });
-                } else {
-                    var maRow = rs.filter(function(r){ return /graduated/i.test(r.status) && /MASTER OF ARTS/i.test(r.title); })[0];
-                    if(maRow){
-                        h.maOnly++; h.listedMa++;
-                        h.formers.push({ name: last.name, outcome: "ma", when: QS[maRow.code] + " " + maRow.year, fromLists: true });
-                    } else {
-                        h.left++; h.listedLeft++;
-                        h.formers.push({ name: last.name, outcome: "left", when: when, fromLists: true });
-                    }
-                }
-            });
-            tell({ cohorts: Object.keys(extra).map(function(key){ return extra[key]; }), found: found, oldest: oldest });
+            var built = ctx.rebuild(onLists), added = 0, reread = 0;
+            Object.keys(built.outcomes).forEach(function(k){ if(!(k in ctx.before)) added++; else if(ctx.before[k] !== built.outcomes[k]) reread++; });
+            tell({ cohorts: built.cohorts, replace: true, found: added, reread: reread, oldest: oldest });
         };
         (function next(){
             if(w.closed) return;
@@ -258,61 +226,100 @@ javascript:(function(){
             var d = detailByKey[k];
             students.push(named({ link: makeLink ? makeLink({ SystemKey: k }) : "", overall: d.Status, quarter: "Not on MyGrad's " + listsLabel + " lists", degreeTitle: d.DegreeTitle, degreeCode: d.DegreeCode, credits: "", d: d }, d.StudentName, d));
         });
-        /* Entering-class history: every Philosophy degree student MyGrad returns, current and former, reduced
-           to per-class totals (one set per program) here so no former student's record reaches the dashboard. Certificate and
-           non-matriculated students are left out. Classes start in autumn; summer admits join that autumn.
-           A student's program is their latest record's degree title, as in Students (the level stands in if there is none). */
-        var QN = { WIN: 0, SPR: 1, SUM: 2, AUT: 3 };
-        var history = {}, rosterTitle = {};
+        /* Entering-class history: every Philosophy degree student, current and former, reduced here to per-class totals (one
+           set per program) so no former student's record reaches the dashboard beyond the name, outcome, quarter and years
+           shown on hover. Each student is placed once, from both sources: their MyGrad detail record, and (after the
+           dashboard opens, see loadListHistory) every quarter's By Quarter list. Until Sept 30, 2026 the two were read in
+           separate passes, so a student with a detail record that the first pass couldn't place (no admission quarter, say)
+           fell through both; a known PhD went missing that way.
+           - Class: the detail record's admission quarter; failing that, their first quarter in the PhD (Pre-Doctor, Doctor of
+             Philosophy) or MA program on the lists. Classes start in autumn; summer admits join that autumn.
+           - Outcome: PhD if the detail record shows it (a final exam "awarded", or the degree in "UW degrees") or any list
+             shows them "Graduated" with the Doctor of Philosophy title (16 of 17 PhDs with detail records do, and none of 29
+             others); else MA if the detail record shows one or a list shows them "Graduated" under another program title
+             (MyGrad's lists rarely record an MA: none of 34 recent MAs show one); else still enrolled, or left.
+           - Left out: certificate and non-matriculated students (unless a former student's lists show them in the degree
+             program), current students with no detail record (they're in Students), and anyone with no sign of enrolling:
+             admitted but never enrolled, e.g. a declined offer (see notes).
+           - Program: the detail record's degree title (or the level), or the last program title on the lists. */
+        var QN = { WIN: 0, SPR: 1, SUM: 2, AUT: 3 }, QS = { 1: "Win", 2: "Spr", 3: "Sum", 4: "Aut" };
+        var rosterTitle = {}, isCurrent = Object.assign({}, seen, currentKeys);
         roster.forEach(function(r){ rosterTitle[r.SystemKey] = r.DegreeTitle || ""; });
-        Object.keys(detailByKey).forEach(function(k){
-            var d = detailByKey[k];
-            var yr = parseInt(d.GradAdmitYr, 10);
-            if(!yr || QN[d.GradAdmitQtr] === undefined || /-ETHICS-/.test(d.DegreeCode) || /certificate/i.test(d.DegreeTitle) || d.Class === "GNM") return;
-            var ay = d.GradAdmitQtr === "AUT" || d.GradAdmitQtr === "SUM" ? yr : yr - 1;
-            var program = d.DegreeTitle || rosterTitle[k] || (/doct|ph\.?\s?d/i.test(d.DegLevel) ? "Doctoral" : /mast/i.test(d.DegLevel) ? "Master's" : d.DegLevel || "Other");
-            var h = history[ay + "|" + program] || (history[ay + "|" + program] = { ay: ay, program: program, entered: 0, enrolled: 0, phd: 0, maOnly: 0, left: 0, phdCand: 0, leftCand: 0, years: [], formers: [] });
-            /* Degree evidence: MyGrad's request fields miss older degrees, so also read "UW degrees", e.g.
-               "Spring, 2024 - MASTER OF ARTS (PHILOSOPHY)". Only Philosophy degrees count. */
-            var uwPhd = String(d.UWDegrees).match(/(win|spr|sum|aut)\w*,?\s+(\d{4})\s*-\s*DOCTOR OF PHILOSOPHY \(PHILOSOPHY\)/i);
-            var uwMA = String(d.UWDegrees).match(/(win|spr|sum|aut)\w*,?\s+(\d{4})\s*-\s*MASTER OF ARTS \(PHILOSOPHY\)/i);
-            var award = String(d.FinalExamRequests).split(/<br\s*\/?>/i).map(function(l){ return l.replace(/<[^>]*>/g, "").trim(); }).filter(function(l){ return /awarded/i.test(l); })[0]
-                || (uwPhd ? uwPhd[1] + " " + uwPhd[2] + " - PhD (UW degree record)" : undefined);
-            var maLine = String(d.MastersRequests).split(/<br\s*\/?>/i).filter(function(l){ return /granted|awarded/i.test(l); })[0]
-                || (uwMA ? uwMA[1] + " " + uwMA[2] + " - MA (UW degree record)" : undefined);
-            var isCurrent = seen[k] || currentKeys[k], everEnrolled = d.LastYrEnrolled !== "" && d.LastYrEnrolled !== "0";
-            if(!award && !isCurrent && !everEnrolled) return; /* admitted but never enrolled (e.g. declined): not part of the class; see notes */
-            h.entered++;
-            var when = function(line){ var q = String(line || "").match(/^(win|spr|sum|aut)\w*,?\s+(\d{4})/i); return q ? q[1].charAt(0).toUpperCase() + q[1].slice(1, 3).toLowerCase() + " " + q[2] : ""; };
-            var cand = /^(y|yes|true)$/i.test(String(d.HasPhC).trim());
-            if(award){
-                h.phd++;
-                if(cand) h.phdCand++;
-                var m = award.match(/^(win|spr|sum|aut)\w*\s+(\d{4})/i);
-                var took = m ? ((parseInt(m[2], 10) * 4 + QN[m[1].toUpperCase()]) - (yr * 4 + QN[d.GradAdmitQtr])) / 4 : null;
-                if(took !== null) h.years.push(took);
-                h.formers.push({ name: displayName(d.StudentName, d.StudentPreferredName), outcome: "phd", when: when(award), years: took });
-            } else if(isCurrent) h.enrolled++;
-            else if(maLine){
-                h.maOnly++;
-                if(cand) h.leftCand++;
-                h.formers.push({ name: displayName(d.StudentName, d.StudentPreferredName), outcome: "ma", when: when(maLine) });
-            } else {
-                h.left++;
-                if(cand) h.leftCand++;
-                h.formers.push({ name: displayName(d.StudentName, d.StudentPreferredName), outcome: "left", when: d.LastYrEnrolled && d.LastYrEnrolled !== "0" ? ((d.LastQtrEnrolled || "") + " " + d.LastYrEnrolled).trim() : "" });
-            }
-        });
-        var cohorts = Object.keys(history).map(function(key){
-            var h = history[key];
-            return { ay: h.ay, program: h.program, entered: h.entered, enrolled: h.enrolled, phd: h.phd, maOnly: h.maOnly, left: h.left, formers: h.formers, phdYears: h.years, phdCand: h.phdCand, leftCand: h.leftCand };
-        });
+        var PROGRAM_TITLE = /DOCTOR OF PHILOSOPHY|PRE-?\s?DOCTOR|MASTER OF ARTS/i, NON_DEGREE_TITLE = /CERTIFICATE|^\s*GNM/i;
+        function when(line){ var q = String(line || "").match(/^(win|spr|sum|aut)\w*,?\s+(\d{4})/i); return q ? q[1].charAt(0).toUpperCase() + q[1].slice(1, 3).toLowerCase() + " " + q[2] : ""; }
+        function buildHistory(onLists){
+            var history = {}, outcomes = {};
+            Object.keys(detailByKey).concat(Object.keys(onLists).filter(function(k){ return !detailByKey[k]; })).forEach(function(k){
+                var d = detailByKey[k] || null, current = !!isCurrent[k];
+                if(current && !d) return;
+                var rs = (onLists[k] || []).slice().sort(function(a, b){ return a.idx - b.idx; });
+                var inProgram = rs.filter(function(r){ return PROGRAM_TITLE.test(r.title) && !NON_DEGREE_TITLE.test(r.title); });
+                var detailDegree = !!d && !(/-ETHICS-/.test(d.DegreeCode) || /certificate/i.test(d.DegreeTitle) || d.Class === "GNM");
+                /* The lists can bring back a former student whose latest record is a certificate or non-matriculated one; a current
+                   student's own record decides (they're in Students with it). */
+                if(!detailDegree && (current || !inProgram.length)) return;
+                var yr = d ? parseInt(d.GradAdmitYr, 10) : NaN, qtr = d ? String(d.GradAdmitQtr || "").trim().toUpperCase() : "";
+                var entry = detailDegree && yr && QN[qtr] !== undefined ? { idx: yr * 4 + QN[qtr], ay: qtr === "AUT" || qtr === "SUM" ? yr : yr - 1 }
+                    : inProgram.length ? { idx: inProgram[0].idx, ay: inProgram[0].code >= 3 ? inProgram[0].year : inProgram[0].year - 1, fromLists: true } : null;
+                if(!entry) return;
+                /* Degree evidence on the detail record: MyGrad's request fields miss older degrees, so also read "UW degrees",
+                   e.g. "Spring, 2024 - MASTER OF ARTS (PHILOSOPHY)". Only Philosophy degrees count. */
+                var uwPhd = d ? String(d.UWDegrees).match(/(win|spr|sum|aut)\w*,?\s+(\d{4})\s*-\s*DOCTOR OF PHILOSOPHY\s*\(\s*PHILOSOPHY\s*\)/i) : null;
+                var uwMA = d ? String(d.UWDegrees).match(/(win|spr|sum|aut)\w*,?\s+(\d{4})\s*-\s*MASTER OF ARTS\s*\(\s*PHILOSOPHY\s*\)/i) : null;
+                var award = d ? (String(d.FinalExamRequests).split(/<br\s*\/?>/i).map(function(l){ return l.replace(/<[^>]*>/g, "").trim(); }).filter(function(l){ return /awarded/i.test(l); })[0]
+                    || (uwPhd ? uwPhd[1] + " " + uwPhd[2] + " - PhD (UW degree record)" : undefined)) : undefined;
+                var maLine = d ? (String(d.MastersRequests).split(/<br\s*\/?>/i).filter(function(l){ return /granted|awarded/i.test(l); })[0]
+                    || (uwMA ? uwMA[1] + " " + uwMA[2] + " - MA (UW degree record)" : undefined)) : undefined;
+                var listPhd = rs.filter(function(r){ return /graduated/i.test(r.status) && /DOCTOR OF PHILOSOPHY/i.test(r.title); })[0];
+                var listMa = rs.filter(function(r){ return /graduated/i.test(r.status) && PROGRAM_TITLE.test(r.title) && !/DOCTOR OF PHILOSOPHY/i.test(r.title); })[0];
+                var everEnrolled = (!!d && d.LastYrEnrolled !== "" && d.LastYrEnrolled !== "0")
+                    || rs.some(function(r){ return /\bregistered\b|graduated|continuing|on-?\s?leave/i.test(r.status) && !/not\s+registered/i.test(r.status); });
+                if(!award && !listPhd && !current && !everEnrolled) return; /* admitted but never enrolled (e.g. declined): not part of the class */
+                var program = (detailDegree && (d.DegreeTitle || rosterTitle[k] || (/doct|ph\.?\s?d/i.test(d.DegLevel) ? "Doctoral" : /mast/i.test(d.DegLevel) ? "Master's" : d.DegLevel || "Other")))
+                    || inProgram[inProgram.length - 1].title.trim();
+                var h = history[entry.ay + "|" + program] || (history[entry.ay + "|" + program] = { ay: entry.ay, program: program, entered: 0, enrolled: 0, phd: 0, maOnly: 0, left: 0,
+                    phdCand: 0, leftCand: 0, formers: [], phdYears: [], listedEntered: 0, listedPhd: 0, listedMa: 0, listedLeft: 0 });
+                var name = d ? displayName(d.StudentName, d.StudentPreferredName) : rs[rs.length - 1].name;
+                var cand = !!d && /^(y|yes|true)$/i.test(String(d.HasPhC).trim()), placedByLists = !d || !!entry.fromLists;
+                h.entered++;
+                if(!d) h.listedEntered++;   /* no candidacy record: the candidacy lines leave these out */
+                if(award || listPhd){
+                    h.phd++;
+                    if(cand) h.phdCand++;
+                    if(!d) h.listedPhd++;
+                    var m = award ? award.match(/^(win|spr|sum|aut)\w*,?\s+(\d{4})/i) : null;
+                    var doneIdx = m ? parseInt(m[2], 10) * 4 + QN[m[1].toUpperCase()] : listPhd ? listPhd.idx : null;
+                    var took = doneIdx !== null ? (doneIdx - entry.idx) / 4 : null;
+                    if(took !== null) h.phdYears.push(took);
+                    h.formers.push({ name: name, outcome: "phd", when: award ? when(award) : QS[listPhd.code] + " " + listPhd.year, years: took, fromLists: placedByLists || !award });
+                    outcomes[k] = "phd";
+                } else if(current){
+                    h.enrolled++;
+                    outcomes[k] = "enrolled";
+                } else if(maLine || listMa){
+                    h.maOnly++;
+                    if(cand) h.leftCand++;
+                    if(!d) h.listedMa++;
+                    h.formers.push({ name: name, outcome: "ma", when: maLine ? when(maLine) : QS[listMa.code] + " " + listMa.year, fromLists: placedByLists || !maLine });
+                    outcomes[k] = "ma";
+                } else {
+                    h.left++;
+                    if(cand) h.leftCand++;
+                    if(!d) h.listedLeft++;
+                    var lastRow = rs[rs.length - 1], enrolledTo = d && d.LastYrEnrolled && d.LastYrEnrolled !== "0" ? ((d.LastQtrEnrolled || "") + " " + d.LastYrEnrolled).trim() : "";
+                    h.formers.push({ name: name, outcome: "left", when: enrolledTo || (lastRow ? QS[lastRow.code] + " " + lastRow.year : ""), fromLists: placedByLists || (!enrolledTo && !!lastRow) });
+                    outcomes[k] = "left";
+                }
+            });
+            return { cohorts: Object.keys(history).map(function(key){ return history[key]; }), outcomes: outcomes };
+        }
+        var built = buildHistory({}), cohorts = built.cohorts;
         var payload = { students: students, cohorts: cohorts, detailLoaded: current !== null, rosterQuarter: listsLabel, generated: new Date().toISOString() };
         var json = JSON.stringify(payload).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
         w.document.open();
         w.document.write(PAGE_HTML + "<script>(" + dashboard.toString() + ")(" + json + ");<\/script></body></html>");
         w.document.close();
-        loadListHistory({ details: detailByKey, current: Object.assign({}, seen, currentKeys) });
+        loadListHistory({ rebuild: buildHistory, before: built.outcomes });
     }).catch(function(err){
         w.document.body.innerHTML = "<p style='font-family:sans-serif;padding:20px;color:#b91c1c'>Couldn't load the student list from MyGrad (" + err.message + "). Reload the By Quarter page and try again.</p>";
     });
@@ -959,15 +966,17 @@ javascript:(function(){
                 el.title = "Reading every quarter’s list back to the program’s first: about a minute. Keep the MyGrad tab open until it finishes.";
                 return;
             }
-            data.cohorts = data.cohorts.concat(msg.cohorts || []);
+            data.cohorts = msg.replace ? msg.cohorts : data.cohorts.concat(msg.cohorts || []);
             mergedFor = null;
             historyDerived();
             fillPrograms();
             updateSkippedNote();
-            el.textContent = msg.found ? "· " + msg.found + " more from MyGrad’s quarter lists" : "";
-            toast(msg.found ? "Full history added: <b>" + msg.found + "</b> more former students in Entering classes." : "Full history checked: no more former students found.", 6000);
-            el.title = msg.found ? msg.found + " former students have no MyGrad detail record, only entries on its quarter lists (which go back to " + msg.oldest + "). Each counts in the entering class of their first quarter in the PhD or MA program. "
-                + "PhD: their last list entry says Graduated, with the Doctor of Philosophy title (true of 16 of 17 PhDs with detail records). Otherwise they left, with an MA if a list shows them Graduated in the Master of Arts program (MyGrad’s lists rarely record an MA). The candidacy lines leave them out." : "";
+            el.textContent = msg.found ? "· " + msg.found + " more from MyGrad’s quarter lists" : msg.reread ? "· " + msg.reread + " updated from MyGrad’s quarter lists" : "";
+            toast((msg.found ? "Full history added: <b>" + msg.found + "</b> more former students in Entering classes" : "Full history checked: no more former students found")
+                + (msg.reread ? ", and <b>" + msg.reread + "</b> updated." : "."), 6000);
+            el.title = msg.found || msg.reread ? (msg.found ? msg.found + " former students were found only through MyGrad’s quarter lists (which go back to " + msg.oldest + ")" : "No more former students were found")
+                + (msg.reread ? ", and the lists changed the outcome of " + msg.reread + " already counted (for example, a PhD their detail record didn’t show)" : "") + ". A student with no admission quarter on record counts in the entering class of their first quarter in the PhD or MA program. "
+                + "PhD: a list shows them Graduated with the Doctor of Philosophy title (true of 16 of 17 PhDs with detail records), if their detail record doesn’t show it. MA: Graduated under another program title (MyGrad’s lists rarely record an MA). Otherwise they left. Students with no detail record have no candidacy record, so the candidacy lines leave them out." : "";
             render();
         };
 
