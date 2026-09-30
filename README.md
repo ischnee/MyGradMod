@@ -107,7 +107,9 @@ Hovering explains most numbers in place, e.g. why a cell is marked "stalled".
   - A flag is a prompt to look, not a finding: **check the student's official MyGrad record before acting.**
 - **Counts can differ from MyGrad's list.** Students whose PhD has been awarded can stay on MyGrad's By Quarter list. The dashboard shows them in the entering-class history, not among current students. Hover **All** to see how the count reconciles with MyGrad's.
 - **Recent outcomes are partial.** For cohorts with students still enrolled, the PhD share counts only those who have already finished or left, and is marked with an asterisk (\*).
-- **Older cohorts may be incomplete** if MyGrad no longer keeps their records.
+- **The full history takes about a minute.** MyGrad's detail records miss many former students. So once the dashboard is open, MyGradMod also reads every past quarter's list, back to about 1990, and adds the former students found only there. Keep the MyGrad tab open until the Entering classes bar says it's done.
+  - **Outcomes:** a PhD is read from a last list entry of "Graduated" with the Doctor of Philosophy title. The lists don't record master's degrees, so the others count as "left, no degree".
+  - **Candidacy:** the candidacy lines count only students with MyGrad detail records.
 
 ## Screenshots (made-up students)
 

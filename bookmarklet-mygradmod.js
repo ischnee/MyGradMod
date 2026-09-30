@@ -42,9 +42,10 @@ javascript:(function(){
     var today = new Date(), month = today.getMonth(), thisYear = today.getFullYear();
     var thisQ = month >= 8 ? { code: 4, year: thisYear } : month <= 2 ? { code: 1, year: thisYear } : { code: 2, year: thisYear };
     var nextQ = thisQ.code === 4 ? { code: 1, year: thisYear + 1 } : { code: thisQ.code + 1, year: thisYear };
+    function listUrl(code, year){ return location.origin + "/mgp-dept.stu.detail/home/getStudentListNew?quarter=" + code + "&year=" + year + "&status=0&degree=0"; }
     [thisQ, nextQ].forEach(function(q){
         q.label = QNAME[q.code] + " " + q.year;
-        q.url = location.origin + "/mgp-dept.stu.detail/home/getStudentListNew?quarter=" + q.code + "&year=" + q.year + "&status=0&degree=0";
+        q.url = listUrl(q.code, q.year);
     });
     var listsLabel = thisQ.label + " and " + nextQ.label;
     var w = window.open("", "_blank");
@@ -103,6 +104,66 @@ javascript:(function(){
         }
         return null;
     }
+    /* The full history. MyGrad's detail records miss many former students: in Sept 2026, 60 of the doctoral-track
+       students on its quarter lists since 1990 had no detail record. So once the dashboard is open, every quarter's list
+       is read, from next year back until five years in a row are empty (about a minute; MyGrad answers one request at a
+       time). Students found only there, in the PhD (Pre-Doctor, Doctor of Philosophy) or MA program, join the entering
+       class of their first quarter in it. Their last list entry gives the outcome: "Graduated" with the Doctor of
+       Philosophy title is a PhD (16 of 17 PhDs with detail records ended that way, and none of 29 others); "Graduated"
+       without it is an MA; anything else means they left. Only these reach the dashboard: counts per class, and for each
+       student the name, outcome, quarter and years to PhD shown on hover, as for other former students. */
+    function loadListHistory(ctx){
+        var QS = { 1: "Win", 2: "Spr", 3: "Sum", 4: "Aut" }, onLists = {}, year = nextQ.year, empty = 0, oldest = null;
+        var tell = function(msg){ try { if(!w.closed && w.mygradmodHistory) w.mygradmodHistory(msg); } catch(e){} };
+        var finish = function(){
+            var extra = {}, found = 0;
+            Object.keys(onLists).forEach(function(k){
+                if(ctx.details[k] || ctx.current[k]) return;
+                var rs = onLists[k].sort(function(a, b){ return a.idx - b.idx; });
+                var inProgram = rs.filter(function(r){ return /DOCTOR OF PHILOSOPHY|PRE-DOCTOR|MASTER OF ARTS/i.test(r.title) && !/CERTIFICATE|^\s*GNM/i.test(r.title); });
+                if(!inProgram.length) return;
+                var first = inProgram[0], last = rs[rs.length - 1], program = inProgram[inProgram.length - 1].title.trim();
+                var ay = first.code >= 3 ? first.year : first.year - 1;   /* Summer and Autumn begin that year's class */
+                var h = extra[ay + "|" + program] || (extra[ay + "|" + program] = { ay: ay, program: program, entered: 0, enrolled: 0, phd: 0, maOnly: 0, left: 0, phdCand: 0, leftCand: 0,
+                    formers: [], phdYears: [], listedEntered: 0, listedPhd: 0, listedMa: 0, listedLeft: 0 });
+                var graduated = /graduated/i.test(last.status), phdTitle = rs.some(function(r){ return /DOCTOR OF PHILOSOPHY/i.test(r.title); });
+                var when = QS[last.code] + " " + last.year;
+                h.entered++; h.listedEntered++; found++;
+                if(graduated && phdTitle){
+                    var took = (last.idx - first.idx) / 4;
+                    h.phd++; h.listedPhd++; h.phdYears.push(took);
+                    h.formers.push({ name: last.name, outcome: "phd", when: when, years: took, fromLists: true });
+                } else if(graduated){
+                    h.maOnly++; h.listedMa++;
+                    h.formers.push({ name: last.name, outcome: "ma", when: when, fromLists: true });
+                } else {
+                    h.left++; h.listedLeft++;
+                    h.formers.push({ name: last.name, outcome: "left", when: when, fromLists: true });
+                }
+            });
+            tell({ cohorts: Object.keys(extra).map(function(key){ return extra[key]; }), found: found, oldest: oldest });
+        };
+        (function next(){
+            if(w.closed) return;
+            if(empty >= 5 || year < 1950) return finish();
+            tell({ progress: year });
+            Promise.all([1, 2, 3, 4].map(function(code){
+                return getJson(listUrl(code, year)).then(rowsOf).catch(function(){ return []; }).then(function(rs){ return { code: code, rs: rs }; });
+            })).then(function(lists){
+                var n = 0;
+                lists.forEach(function(l){
+                    n += l.rs.length;
+                    l.rs.forEach(function(r){
+                        (onLists[r.SystemKey] = onLists[r.SystemKey] || []).push({ idx: year * 4 + l.code - 1, year: year, code: l.code,
+                            title: String(r.DegreeTitle || ""), status: String(r.quarterStatus || "").trim(), name: r.LegalName || "" });
+                    });
+                });
+                if(n){ empty = 0; oldest = year; } else empty++;
+                year--;
+                next();
+            });
+        })();
+    }
     function rowsOf(d){
         if(Array.isArray(d)) return d;
         if(d && typeof d === "object") return d.Data || d.data || Object.values(d).find(Array.isArray) || [];
@@ -128,7 +189,7 @@ javascript:(function(){
         + '#cohorts .blk{border-left:2px solid #e8e3f3}#cohorts td.st-none{color:#c9c9c9}#cohorts td.st-on{color:#2e1a5c;font-weight:600}#cohorts tbody tr td.st-on.c-late,#cohorts tbody tr td.c-late[style]{color:#6b2f05}#cohorts td{vertical-align:middle}#cohorts td.summary{white-space:nowrap}#cohorts td.sc{cursor:pointer}#cohorts td.sc.sel{box-shadow:inset 0 0 0 2.5px #1d4ed8}#cohorts td.strip-cell{text-align:left;white-space:nowrap;padding-right:13px;width:1%}.stripwrap{display:flex;align-items:center;gap:6px}.striptext{display:inline-flex;align-items:center;gap:4px}.stnum{min-width:18px;text-align:right;font-variant-numeric:tabular-nums}.stof{min-width:27px;line-height:1.15}.strip{display:flex;flex-wrap:wrap;gap:7px 12px;flex:none;width:max-content;max-width:150px}@media (min-width:1720px){.strip{max-width:312px}}.dgrp{display:flex;gap:5px}.sdot{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;cursor:pointer;color:#fff;font-size:11px;font-weight:700;font-style:normal;letter-spacing:-.2px;line-height:1;flex:none}.sdot.gone{background:#fff;box-shadow:inset 0 0 0 1.5px #b9b0cf;cursor:default}.sdot.ring{box-shadow:0 0 0 2px #fff,0 0 0 4px #1d4ed8}.conn{display:inline-flex;align-items:center;gap:3px;padding:3px 5px;border-radius:4px;cursor:pointer;white-space:nowrap}.conn b{display:block;width:15px;height:15px;border-radius:3px;box-shadow:inset 0 0 0 1px #cbbfe6}.conn .cn{margin-left:7px;font-size:13px;color:#555}.conn.lit{box-shadow:0 0 0 2px #1d4ed8;background:#fff}tr.hl.soft td{background:#f5f9fe}tr.hl.soft td:first-child{box-shadow:inset 4px 0 0 #bcd3f5}tr.focus td{background:#d3e3f8}#cohorts td.flagcell{cursor:pointer;font-weight:600;color:#92400e}#cohorts td.flagcell.sel{box-shadow:inset 0 0 0 2.5px #1d4ed8}#cohorts td.oc{font-weight:600}#cohorts td.phdpair,#cohorts th.phdpair{background:#f1f8f4}#cohorts th.oh{white-space:nowrap;line-height:1.2;vertical-align:bottom;padding-left:6px;padding-right:6px}#cohorts th.fit{line-height:1.2}.ohd{display:inline-grid;grid-auto-flow:column;align-items:center;column-gap:6px;text-align:left}#cohorts thead tr:last-child th{vertical-align:bottom}.sdot.gone{cursor:default}#tip{position:fixed;z-index:20;pointer-events:none;display:none;max-width:300px;background:#2e1a5c;color:#fff;font-size:13px;line-height:1.45;padding:8px 11px;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25)}#tip .th{font-weight:600;margin-bottom:3px}#tip .tn{color:#e8e3d3}#tip ul{margin:4px 0 0;padding-left:16px}#tip .tf{margin-top:5px;color:#cbbfe6;font-size:12px}tr.focus td:first-child{box-shadow:inset 5px 0 0 #1d4ed8}'
         + '.c-ok{color:#047857;font-weight:600}#cohorts tbody tr td.c-late{background:#fef3c7;color:#92400e;font-weight:600}'
         + '.panel{background:#fff;margin:15px 25px;padding:15px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.05);overflow-x:auto}'
-        + '.panel h2{margin:0 0 10px;color:#4b2e83;font-size:20px;border-bottom:2px solid #b7a57a;padding-bottom:6px}.panel h2.dark-head{display:flex;align-items:center;gap:10px;margin:-15px -15px 14px;padding:10px 20px 8px;min-height:44px;background:#2e1a5c;color:#fff;border-bottom:none;border-radius:6px 6px 0 0}.panel.collapsed h2.dark-head{margin-bottom:-15px;padding-bottom:10px;border-radius:6px}.panel.collapsed .dark-head .seg,.panel.collapsed .dark-head select,.panel.collapsed .dark-head input,.panel.collapsed .dark-head .bar-opt{display:none}.classes-head #cohort-note{color:#cbbfe6}.classes-head .panel-toggle{white-space:nowrap}.panel.collapsed #class-slider,.panel.collapsed #cohort-note{display:none}#class-slider{position:relative;flex:1;height:46px;margin:0 44px;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none;font-weight:normal}.sl-seg{position:absolute;top:15px;height:4px;background:#8a72d6}.sl-seg.hist{background:#56565d}.sl-seg.hist.gap{background:repeating-linear-gradient(90deg,#56565d 0 4px,transparent 4px 8px)}.sl-seg.sel{top:13px;height:8px;background:#cdb8fa;cursor:grab}.sl-seg.sel.hist{background:#9d9da5}.sl-seg.sel.hist.gap{background:repeating-linear-gradient(90deg,#9d9da5 0 5px,transparent 5px 8px)}.sl-dot{position:absolute;top:17px;width:22px;height:22px;margin:-11px 0 0 -11px;padding:0;border-radius:50%;background:#efe9f9;border:3px solid #2e1a5c;box-shadow:0 0 0 2px #b9abd8,0 1px 5px rgba(0,0,0,.45);cursor:ew-resize}.sl-dot:focus-visible{outline:none;box-shadow:0 0 0 2px #b9abd8,0 0 0 6px rgba(255,255,255,.35)}.sl-lab{position:absolute;top:30px;transform:translateX(-50%);font-size:13px;font-weight:600;color:#efe9f9;white-space:nowrap;pointer-events:none}.sl-lab.sl-end{color:rgba(255,255,255,.5);font-weight:normal}.set-line{display:flex;gap:6px;align-items:center}.set-note{margin:4px 0 12px 22px}.dark-head .seg{display:inline-flex;margin-left:14px;border:1px solid #8f7bc4;border-radius:15px;overflow:hidden;font-weight:normal}.seg button{background:none;border:0;color:#e6ddf7;font:inherit;font-size:14px;padding:4px 13px;cursor:pointer}.seg button+button{border-left:1px solid #8f7bc4}.seg button b{color:#fff;margin-left:2px}.seg button:hover{background:rgba(255,255,255,.08)}.seg button.on{background:#c3b1f0;color:#2e1a5c}.seg button.on b{color:#2e1a5c}.bar-fill{flex:1}.dark-head select,.dark-head input[type=search]{font-size:14px;padding:4px 7px;border:0;border-radius:5px;font-weight:normal}.dark-head input[type=search]{width:210px}.bar-opt{display:inline-flex;align-items:center;gap:5px;font-size:14px;font-weight:normal;color:#e6ddf7;cursor:pointer;margin-left:4px}.hl-line:empty{display:none}.hl-line{margin:-4px 0 8px}.summary{display:grid;grid-template-columns:1.45fr .8fr 1fr 1.75fr;row-gap:14px;background:#fff;margin:15px 25px 0;padding:14px 0;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.05)}.summary section{padding:0 22px;border-left:2px solid #e8e3f3}.summary section:first-child{border-left:none}@media (max-width:1000px){.summary{grid-template-columns:1fr}.summary section{border-left:none}}.summary h4{margin:0 0 4px;color:#85754d;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}.sm-big{display:flex;align-items:center;gap:12px;font-size:29px;font-weight:700;color:#4b2e83;line-height:1.2;margin-bottom:4px}.sm-parts{display:flex;flex-wrap:wrap;gap:2px 4px;font-size:14px;color:#444}.sm-note{font-size:13px;color:#666}.sm-win{background:none;border:0;padding:0;font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer;text-decoration:underline dotted}.sm-win:hover{color:#4b2e83}.sm-of{font-size:13px;font-weight:normal;color:#666;line-height:1.25;margin-left:4px}.sm-bigs{display:flex;gap:48px;flex-wrap:wrap;margin-bottom:6px}.sm-lines{display:flex;flex-direction:column;gap:3px;font-size:13px;color:#444}.sm-lines b{color:#2e1a5c}.sm-out .small{font-size:12px}.sm-foot{margin-top:3px;font-size:12px;color:#666}#cohorts tr.rates td{border-bottom:none;padding-top:0;font-size:13px;color:#666}#cohorts td.rate-l{text-align:left}#cohorts tr.star td{border:none;background:#fff;padding-top:6px;text-align:right;font-size:13px;color:#666;white-space:nowrap}.outcomes:empty{display:none}.outcomes{margin:12px 0 0;font-size:14px;color:#333;line-height:1.7}.outcomes strong{color:#2e1a5c}.outcomes .sep{color:#bbb;margin:0 8px}.outcomes b{color:#2e1a5c}.sm-sep{width:1px;align-self:stretch;background:#ddd;margin:3px 10px 3px 4px}.sm-others{margin-top:4px;align-items:center;font-size:13px}.sm-others .sm-note{margin-right:6px}.sm-n{background:none;border:0;border-radius:4px;padding:2px 6px;margin-left:-6px;font:inherit;color:inherit;cursor:pointer}.sm-n b{color:#2e1a5c}.sm-n:hover{background:#f3eefc}.sm-n.on{background:#dbe8fb;box-shadow:inset 0 0 0 1.5px #2563eb}.sm-n.big{font-size:29px;font-weight:700;padding:0 6px}.sm-n.big b{color:#4b2e83}.sm-n.late b{color:#92400e}#roster td.coh{position:relative;vertical-align:top;background:#fff;box-shadow:none;padding:0 10px 0 22px;cursor:pointer;width:1%;min-width:96px;border-bottom:1px solid #e2dcef}.coh-bar{position:absolute;left:8px;top:7px;bottom:7px;width:4px;border-radius:2px;background:#c9bdea}#roster td.coh:hover .coh-bar{background:#9f8bd6}#roster td.coh.c-active .coh-bar{background:#2563eb;width:6px;left:7px}#roster td.coh.other{cursor:default}#roster td.coh.other .coh-bar{background:#d4d4d8}.coh-label{position:sticky;top:8px;display:flex;flex-direction:column;padding:8px 0;line-height:1.35;max-width:120px}.coh-label b{color:#2e1a5c;font-size:15px}.coh-label span{font-size:13px;color:#666}.coh-label em{font-style:normal;color:#92400e;font-weight:600}#roster td.coh.c-active .coh-label b{color:#1d4ed8}#roster.by-cohort tr.hl td.nm{box-shadow:inset 4px 0 0 #2563eb}#roster.by-cohort tr.hl.soft td.nm{box-shadow:inset 4px 0 0 #bcd3f5}#roster.by-cohort tr.focus td.nm{box-shadow:inset 5px 0 0 #1d4ed8}'
+        + '.panel h2{margin:0 0 10px;color:#4b2e83;font-size:20px;border-bottom:2px solid #b7a57a;padding-bottom:6px}.panel h2.dark-head{display:flex;align-items:center;gap:10px;margin:-15px -15px 14px;padding:10px 20px 8px;min-height:44px;background:#2e1a5c;color:#fff;border-bottom:none;border-radius:6px 6px 0 0}.panel.collapsed h2.dark-head{margin-bottom:-15px;padding-bottom:10px;border-radius:6px}.panel.collapsed .dark-head .seg,.panel.collapsed .dark-head select,.panel.collapsed .dark-head input,.panel.collapsed .dark-head .bar-opt{display:none}.classes-head #cohort-note,.classes-head #hist-status{color:#cbbfe6}.classes-head #hist-status{white-space:nowrap;cursor:help}.classes-head .panel-toggle{white-space:nowrap}.panel.collapsed #class-slider,.panel.collapsed #cohort-note,.panel.collapsed #hist-status{display:none}#class-slider{position:relative;flex:1;height:46px;margin:0 44px;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none;font-weight:normal}.sl-seg{position:absolute;top:15px;height:4px;background:#8a72d6}.sl-seg.hist{background:#56565d}.sl-seg.hist.gap{background:repeating-linear-gradient(90deg,#56565d 0 4px,transparent 4px 8px)}.sl-seg.sel{top:13px;height:8px;background:#cdb8fa;cursor:grab}.sl-seg.sel.hist{background:#9d9da5}.sl-seg.sel.hist.gap{background:repeating-linear-gradient(90deg,#9d9da5 0 5px,transparent 5px 8px)}.sl-dot{position:absolute;top:17px;width:22px;height:22px;margin:-11px 0 0 -11px;padding:0;border-radius:50%;background:#efe9f9;border:3px solid #2e1a5c;box-shadow:0 0 0 2px #b9abd8,0 1px 5px rgba(0,0,0,.45);cursor:ew-resize}.sl-dot:focus-visible{outline:none;box-shadow:0 0 0 2px #b9abd8,0 0 0 6px rgba(255,255,255,.35)}.sl-lab{position:absolute;top:30px;transform:translateX(-50%);font-size:13px;font-weight:600;color:#efe9f9;white-space:nowrap;pointer-events:none}.sl-lab.sl-end{color:rgba(255,255,255,.5);font-weight:normal}.set-line{display:flex;gap:6px;align-items:center}.set-note{margin:4px 0 12px 22px}.dark-head .seg{display:inline-flex;margin-left:14px;border:1px solid #8f7bc4;border-radius:15px;overflow:hidden;font-weight:normal}.seg button{background:none;border:0;color:#e6ddf7;font:inherit;font-size:14px;padding:4px 13px;cursor:pointer}.seg button+button{border-left:1px solid #8f7bc4}.seg button b{color:#fff;margin-left:2px}.seg button:hover{background:rgba(255,255,255,.08)}.seg button.on{background:#c3b1f0;color:#2e1a5c}.seg button.on b{color:#2e1a5c}.bar-fill{flex:1}.dark-head select,.dark-head input[type=search]{font-size:14px;padding:4px 7px;border:0;border-radius:5px;font-weight:normal}.dark-head input[type=search]{width:210px}.bar-opt{display:inline-flex;align-items:center;gap:5px;font-size:14px;font-weight:normal;color:#e6ddf7;cursor:pointer;margin-left:4px}.hl-line:empty{display:none}.hl-line{margin:-4px 0 8px}.summary{display:grid;grid-template-columns:1.45fr .8fr 1fr 1.75fr;row-gap:14px;background:#fff;margin:15px 25px 0;padding:14px 0;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.05)}.summary section{padding:0 22px;border-left:2px solid #e8e3f3}.summary section:first-child{border-left:none}@media (max-width:1000px){.summary{grid-template-columns:1fr}.summary section{border-left:none}}.summary h4{margin:0 0 4px;color:#85754d;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}.sm-big{display:flex;align-items:center;gap:12px;font-size:29px;font-weight:700;color:#4b2e83;line-height:1.2;margin-bottom:4px}.sm-parts{display:flex;flex-wrap:wrap;gap:2px 4px;font-size:14px;color:#444}.sm-note{font-size:13px;color:#666}.sm-win{background:none;border:0;padding:0;font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer;text-decoration:underline dotted}.sm-win:hover{color:#4b2e83}.sm-of{font-size:13px;font-weight:normal;color:#666;line-height:1.25;margin-left:4px}.sm-bigs{display:flex;gap:48px;flex-wrap:wrap;margin-bottom:6px}.sm-lines{display:flex;flex-direction:column;gap:3px;font-size:13px;color:#444}.sm-lines b{color:#2e1a5c}.sm-out .small{font-size:12px}.sm-foot{margin-top:3px;font-size:12px;color:#666}#cohorts tr.rates td{border-bottom:none;padding-top:0;font-size:13px;color:#666}#cohorts td.rate-l{text-align:left}#cohorts tr.star td{border:none;background:#fff;padding-top:6px;text-align:right;font-size:13px;color:#666;white-space:nowrap}.outcomes:empty{display:none}.outcomes{margin:12px 0 0;font-size:14px;color:#333;line-height:1.7}.outcomes strong{color:#2e1a5c}.outcomes .sep{color:#bbb;margin:0 8px}.outcomes b{color:#2e1a5c}.sm-sep{width:1px;align-self:stretch;background:#ddd;margin:3px 10px 3px 4px}.sm-others{margin-top:4px;align-items:center;font-size:13px}.sm-others .sm-note{margin-right:6px}.sm-n{background:none;border:0;border-radius:4px;padding:2px 6px;margin-left:-6px;font:inherit;color:inherit;cursor:pointer}.sm-n b{color:#2e1a5c}.sm-n:hover{background:#f3eefc}.sm-n.on{background:#dbe8fb;box-shadow:inset 0 0 0 1.5px #2563eb}.sm-n.big{font-size:29px;font-weight:700;padding:0 6px}.sm-n.big b{color:#4b2e83}.sm-n.late b{color:#92400e}#roster td.coh{position:relative;vertical-align:top;background:#fff;box-shadow:none;padding:0 10px 0 22px;cursor:pointer;width:1%;min-width:96px;border-bottom:1px solid #e2dcef}.coh-bar{position:absolute;left:8px;top:7px;bottom:7px;width:4px;border-radius:2px;background:#c9bdea}#roster td.coh:hover .coh-bar{background:#9f8bd6}#roster td.coh.c-active .coh-bar{background:#2563eb;width:6px;left:7px}#roster td.coh.other{cursor:default}#roster td.coh.other .coh-bar{background:#d4d4d8}.coh-label{position:sticky;top:8px;display:flex;flex-direction:column;padding:8px 0;line-height:1.35;max-width:120px}.coh-label b{color:#2e1a5c;font-size:15px}.coh-label span{font-size:13px;color:#666}.coh-label em{font-style:normal;color:#92400e;font-weight:600}#roster td.coh.c-active .coh-label b{color:#1d4ed8}#roster.by-cohort tr.hl td.nm{box-shadow:inset 4px 0 0 #2563eb}#roster.by-cohort tr.hl.soft td.nm{box-shadow:inset 4px 0 0 #bcd3f5}#roster.by-cohort tr.focus td.nm{box-shadow:inset 5px 0 0 #1d4ed8}'
         + '.panel-toggle{background:none;border:none;padding:0;margin:0 4px 0 0;font:inherit;color:inherit;cursor:pointer}.panel-toggle .chev{display:inline-block;width:18px;font-size:13px;transition:transform .15s}'
         + '.panel.collapsed .panel-body{display:none}.panel.collapsed h2{margin-bottom:0;border-bottom:none;padding-bottom:0}.panel.collapsed .panel-toggle .chev{transform:rotate(-90deg)}'
         + 'table{border-collapse:collapse;width:100%;font-size:14px}th{text-align:left;color:#4b2e83;border-bottom:2px solid #ddd;padding:6px 8px;cursor:pointer;white-space:nowrap}'
@@ -136,7 +197,7 @@ javascript:(function(){
         + '.chip{display:inline-block;border-radius:10px;padding:1px 8px;margin:1px 3px 1px 0;font-size:12px;font-weight:600;white-space:nowrap}'
         + '.yes{background:#d1fae5;color:#047857}.no{background:#f3f4f6;color:#6b7280}.red{background:#fee2e2;color:#b91c1c}.amber{background:#fef3c7;color:#92400e}.info{background:#e0e7ff;color:#3730a3}.gray{background:#f3f4f6;color:#4b5563}'
         + '.small{font-size:12px;color:#666}'
-        + 'footer{margin:0 25px 25px;font-size:13px;color:#666}'
+        + 'footer{margin:0 25px 25px;font-size:13px;color:#666}.hist-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:14px;width:max-content;max-width:calc(100vw - 40px);box-sizing:border-box;background:#2e1a5c;color:#fff;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.3);padding:11px 10px 11px 18px;font-size:14px;transition:opacity .4s}.hist-toast b{color:#cbbfe6;font-weight:600}.hist-toast button{background:none;border:0;color:#cbbfe6;font-size:20px;line-height:1;cursor:pointer;padding:0 6px;border-radius:4px}.hist-toast button:hover{background:rgba(255,255,255,.12)}.hist-toast.gone{opacity:0}'
         + '</style></head><body>';
 
     /* getStudentList takes a status code per group, -1 leaving the group out. CURRENT is what the Current
@@ -244,6 +305,7 @@ javascript:(function(){
         w.document.open();
         w.document.write(PAGE_HTML + "<script>(" + dashboard.toString() + ")(" + json + ");<\/script></body></html>");
         w.document.close();
+        loadListHistory({ details: detailByKey, current: Object.assign({}, seen, currentKeys) });
     }).catch(function(err){
         w.document.body.innerHTML = "<p style='font-family:sans-serif;padding:20px;color:#b91c1c'>Couldn't load the student list from MyGrad (" + err.message + "). Reload the By Quarter page and try again.</p>";
     });
@@ -260,7 +322,16 @@ javascript:(function(){
         try { view.groupByClass = localStorage.getItem("grad-monitor-group-by-class") !== "0"; } catch(e){}
         /* The program picked in the page header applies to the whole page: summary, Entering classes and Students.
            Programs match by degree title, ignoring case and spacing. */
-        function progKey(p){ return String(p || "").trim().replace(/\s+/g, " ").toLowerCase(); }
+        function normTitle(p){ return String(p || "").trim().replace(/\s+/g, " ").toLowerCase(); }
+        /* Pre-Doctor is the PhD program's earlier stage, so it counts as the PhD program (the Doctor of Philosophy title found
+           in the data); a student's own record still shows their title. Worked out on first use, once titles are set. */
+        var phdTitle;
+        function phdProgram(){
+            if(phdTitle === undefined) phdTitle = data.students.map(function(s){ return s.program; }).concat(data.cohorts.map(function(c){ return c.program; }))
+                .filter(function(p){ return /^\s*doctor of philosophy/i.test(p || ""); })[0] || null;
+            return phdTitle;
+        }
+        function progKey(p){ var k = normTitle(p); return /^pre-?\s?doctor/.test(k) && phdProgram() ? normTitle(phdProgram()) : k; }
         function inProgram(p){ return view.program === "all" || progKey(p) === view.program; }
         /* Current students only. Students who have finished (PhD awarded) can linger on the By Quarter list; like every other
            PhD they appear in the Entering classes history (a green hollow dot), not in the student tables. */
@@ -271,8 +342,8 @@ javascript:(function(){
             if(mergedFor === view.program) return merged;
             var byAY = {}, order = { left: 0, ma: 1, phd: 2 };
             data.cohorts.filter(function(c){ return inProgram(c.program); }).forEach(function(c){
-                var m = byAY[c.ay] || (byAY[c.ay] = { ay: c.ay, entered: 0, enrolled: 0, phd: 0, maOnly: 0, left: 0, phdCand: 0, leftCand: 0, formers: [], phdYears: [] });
-                ["entered", "enrolled", "phd", "maOnly", "left", "phdCand", "leftCand"].forEach(function(k){ m[k] += c[k] || 0; });
+                var m = byAY[c.ay] || (byAY[c.ay] = { ay: c.ay, entered: 0, enrolled: 0, phd: 0, maOnly: 0, left: 0, phdCand: 0, leftCand: 0, listedEntered: 0, listedPhd: 0, listedMa: 0, listedLeft: 0, formers: [], phdYears: [] });
+                ["entered", "enrolled", "phd", "maOnly", "left", "phdCand", "leftCand", "listedEntered", "listedPhd", "listedMa", "listedLeft"].forEach(function(k){ m[k] += c[k] || 0; });
                 m.formers = m.formers.concat(c.formers || []);
                 m.phdYears = m.phdYears.concat(c.phdYears || []);
             });
@@ -478,8 +549,18 @@ javascript:(function(){
         /* Which classes the table shows: a slider from the current year (left) back to the oldest class on record (right).
            Its stops are the class years; years with no entering class are skipped unless Settings asks for every year.
            The purple stretch runs back to the oldest class with current students, which is also the default selection. */
-        var classYears = data.cohorts.map(function(c){ return c.ay; });
-        var newestAY = Math.max.apply(null, classYears.concat([currentAY])), oldestAY = Math.min.apply(null, classYears.concat([currentAY]));
+        /* Recomputed when the history from MyGrad's quarter lists arrives (mygradmodHistory, below). */
+        var classYears, newestAY, oldestAY, candidacyKnown;
+        function historyDerived(){
+            classYears = data.cohorts.map(function(c){ return c.ay; });
+            newestAY = Math.max.apply(null, classYears.concat([currentAY]));
+            oldestAY = Math.min.apply(null, classYears.concat([currentAY]));
+            /* Candidacy for former students is trusted only if MyGrad records it for nearly every PhD with a detail record (every PhD reached it). */
+            var phd = 0, cand = 0;
+            data.cohorts.forEach(function(c){ phd += c.phd - (c.listedPhd || 0); cand += c.phdCand || 0; });
+            candidacyKnown = phd > 0 && cand / phd >= 0.9;
+        }
+        historyDerived();
         var currentClasses = roster().filter(function(s){ return stageOf(s) !== null; }).map(function(s){ return s.cohort; });
         var oldestCurrentAY = currentClasses.length ? Math.min.apply(null, currentClasses) : newestAY;
         function sliderStops(){
@@ -639,16 +720,15 @@ javascript:(function(){
            so the two match exactly whenever the slider shows the latest 10. The outcome shares are of everyone no longer enrolled
            (earned PhD + left with MA + left with no degree = 100%), marked * while anyone is still enrolled. */
         function outcomeStats(cohorts){
-            var t = { entered: 0, enrolled: 0, left: 0, ma: 0, phd: 0, leftCand: 0, years: [] };
+            var t = { entered: 0, enrolled: 0, left: 0, ma: 0, phd: 0, leftCand: 0, years: [], listedEntered: 0, listedPhd: 0, listedGone: 0 };
             cohorts.forEach(function(c){
                 var enrolled = roster().filter(function(s){ return s.cohort === c.ay && !s.nonDegree && stageOf(s) !== null; }).length, entered = Math.max(c.entered, enrolled);
                 t.entered += entered; t.enrolled += enrolled; t.left += c.left; t.ma += c.maOnly; t.phd += c.phd; t.leftCand += c.leftCand || 0;
+                t.listedEntered += c.listedEntered || 0; t.listedPhd += c.listedPhd || 0; t.listedGone += (c.listedMa || 0) + (c.listedLeft || 0);
                 t.years = t.years.concat(c.phdYears || []);
             });
             return t;
         }
-        /* Candidacy for former students is trusted only if MyGrad records it for nearly every PhD (every PhD reached it). */
-        var candidacyKnown = (function(){ var phd = 0, cand = 0; data.cohorts.forEach(function(c){ phd += c.phd; cand += c.phdCand || 0; }); return phd > 0 && cand / phd >= 0.9; })();
         function pct(n, d){ return d ? Math.round(n / d * 100) + "%" : "–"; }
         function exited(t){ return t.phd + t.ma + t.left; }
         /* Shares of everyone no longer enrolled, rounded so the three always add to exactly 100% (largest remainder). */
@@ -667,10 +747,13 @@ javascript:(function(){
         /* Under the table: the candidacy lines (when MyGrad records candidacy) and the note behind the asterisk. A 10-year completion
            rate used to lead this line; it was dropped because it counted students still enrolled past year 10 as non-completers. */
         function outcomeParts(t){ return candidacyParts(t); }
+        /* Only students with MyGrad detail records count here: those found only on MyGrad's quarter lists have no candidacy record. */
         function candidacyParts(t){
             if(!candidacyKnown) return [];
-            var out = ["<span>Left before candidacy <b>" + pct(t.left + t.ma - t.leftCand, t.entered) + "</b> · after <b>" + pct(t.leftCand, t.entered) + "</b></span>"];
-            if(t.phd + t.leftCand) out.push("<span title='Of candidates who have finished or left. Nationally about 80% of candidates finish (Bowen & Rudenstine, an older estimate).'><b>" + pct(t.phd, t.phd + t.leftCand) + "</b> of candidates finished <span class='small'>(" + t.phd + " of " + (t.phd + t.leftCand) + " who finished or left)</span></span>");
+            var entered = t.entered - t.listedEntered, phd = t.phd - t.listedPhd, gone = t.left + t.ma - t.listedGone;
+            var only = t.listedEntered ? " Counts only students with MyGrad detail records: the " + t.listedEntered + " found only on MyGrad's quarter lists have no candidacy record." : "";
+            var out = ["<span title='" + esc(only.trim()) + "'>Left before candidacy <b>" + pct(gone - t.leftCand, entered) + "</b> · after <b>" + pct(t.leftCand, entered) + "</b></span>"];
+            if(phd + t.leftCand) out.push("<span title='Of candidates who have finished or left. Nationally about 80% of candidates finish (Bowen & Rudenstine, an older estimate)." + esc(only) + "'><b>" + pct(phd, phd + t.leftCand) + "</b> of candidates finished <span class='small'>(" + phd + " of " + (phd + t.leftCand) + " who finished or left)</span></span>");
             return out;
         }
         function renderSummary(all){
@@ -785,7 +868,7 @@ javascript:(function(){
             + (data.detailLoaded ? "" : "<div class='bar' style='border-left-color:#b91c1c'>Couldn't load student details from MyGrad, so milestones, committees and funding are missing. Status flags still work.</div>")
             + "<div class='summary' id='stats'></div>"
             + "<div class='panel' id='panel-classes'><h2 class='dark-head classes-head'><button type='button' class='panel-toggle' data-panel='classes' aria-expanded='true' aria-controls='body-classes' title='Collapse or expand this section'><span class='chev'>▼</span>Entering classes</button>"
-            + "<div id='class-slider' role='group' aria-label='Entering classes shown in the table' title='Drag a dot, or drag the stretch between them. Double-click to reset.'></div><span id='cohort-note' class='small'></span></h2><div class='panel-body' id='body-classes'>"
+            + "<div id='class-slider' role='group' aria-label='Entering classes shown in the table' title='Drag a dot, or drag the stretch between them. Double-click to reset.'></div><span id='cohort-note' class='small'></span><span id='hist-status' class='small'></span></h2><div class='panel-body' id='body-classes'>"
             + "<table id='cohorts'></table><p id='cohort-outcomes' class='outcomes'></p>"
             + "</div></div>"
             + "<div class='panel' id='panel-students'><h2 class='dark-head'><button type='button' class='panel-toggle' data-panel='students' aria-expanded='true' aria-controls='body-students' title='Collapse or expand this section'><span class='chev'>▼</span>Students</button>"
@@ -800,19 +883,29 @@ javascript:(function(){
             + "Check a student's leave history and the current policies before acting on a flag.</footer>";
 
         /* Every program on MyGrad's list or in the entering-class history, spelled as current students' records spell it. */
-        var programs = {};
-        data.students.concat(data.cohorts).forEach(function(x){ var k = progKey(x.program); if(k && !programs[k]) programs[k] = x.program; });
-        Object.keys(programs).sort(function(a, b){ return programs[a].localeCompare(programs[b]); }).forEach(function(k){
-            var o = document.createElement("option"); o.value = k; o.textContent = programs[k]; document.getElementById("program").appendChild(o);
-        });
+        function fillPrograms(){
+            var programs = {}, select = document.getElementById("program");
+            data.students.concat(data.cohorts).forEach(function(x){ var k = progKey(x.program); if(k && !programs[k]) programs[k] = x.program; });
+            if(phdProgram() && programs[progKey(phdProgram())]) programs[progKey(phdProgram())] = phdProgram();
+            while(select.options.length > 1) select.remove(1);
+            Object.keys(programs).sort(function(a, b){ return programs[a].localeCompare(programs[b]); }).forEach(function(k){
+                var o = document.createElement("option"); o.value = k; o.textContent = programs[k]; select.appendChild(o);
+            });
+            select.value = view.program;
+        }
+        fillPrograms();
 
         ["maBy", "advisorBy", "docCommBy", "phcBy", "readingBy", "fundingYears", "docWarn", "mastersWarn", "gpaMin"].forEach(function(k){
             var el = document.getElementById(k);
             el.value = settings[k];
             el.addEventListener("change", function(){ var v = parseFloat(el.value); if(!isNaN(v)){ settings[k] = v; save(); render(); } });
         });
-        var allYears = document.getElementById("allYears"), skipped = skippedYears();
-        document.getElementById("skipped-note").textContent = skipped.length ? "Years with no entering class are skipped: " + skipped.join(", ") + "." : "No years are skipped: every year from " + oldestAY + " to " + newestAY + " has a class.";
+        var allYears = document.getElementById("allYears");
+        function updateSkippedNote(){
+            var skipped = skippedYears();
+            document.getElementById("skipped-note").textContent = skipped.length ? "Years with no entering class are skipped: " + skipped.join(", ") + "." : "No years are skipped: every year from " + oldestAY + " to " + newestAY + " has a class.";
+        }
+        updateSkippedNote();
         allYears.checked = settings.allYears;
         allYears.addEventListener("change", function(){
             settings.allYears = allYears.checked; save();
@@ -833,6 +926,43 @@ javascript:(function(){
             render();
         });
         function save(){ try { localStorage.setItem("grad-monitor-settings", JSON.stringify(settings)); } catch(e){} }
+
+        /* The full history arrives from the MyGrad tab after the dashboard opens (loadListHistory): progress by year, then
+           former students found only on MyGrad's quarter lists, added to their entering classes. */
+        /* A toast while the history loads, so nobody wonders why Entering classes changes a minute later; × hides it. */
+        var histToast = null;
+        function toast(html, fade){
+            if(histToast === false) return;
+            if(histToast === null){
+                histToast = document.createElement("div");
+                histToast.className = "hist-toast";
+                histToast.setAttribute("role", "status");
+                histToast.innerHTML = "<span class='t'></span><button type='button' aria-label='Hide'>×</button>";
+                histToast.querySelector("button").addEventListener("click", function(){ histToast.remove(); histToast = false; });
+                document.body.appendChild(histToast);
+            }
+            histToast.querySelector(".t").innerHTML = html;
+            if(fade) setTimeout(function(){ if(histToast){ histToast.classList.add("gone"); setTimeout(function(){ if(histToast) histToast.remove(); }, 450); } }, fade);
+        }
+        window.mygradmodHistory = function(msg){
+            var el = document.getElementById("hist-status");
+            if(msg.progress){
+                toast("Adding the program’s full history from MyGrad’s quarter lists: about a minute. Keep the MyGrad tab open. <b>" + msg.progress + "</b>");
+                el.textContent = "· Adding history from MyGrad’s quarter lists… " + msg.progress;
+                el.title = "Reading every quarter’s list back to the program’s first: about a minute. Keep the MyGrad tab open until it finishes.";
+                return;
+            }
+            data.cohorts = data.cohorts.concat(msg.cohorts || []);
+            mergedFor = null;
+            historyDerived();
+            fillPrograms();
+            updateSkippedNote();
+            el.textContent = msg.found ? "· " + msg.found + " more from MyGrad’s quarter lists" : "";
+            toast(msg.found ? "Full history added: <b>" + msg.found + "</b> more former students in Entering classes." : "Full history checked: no more former students found.", 6000);
+            el.title = msg.found ? msg.found + " former students have no MyGrad detail record, only entries on its quarter lists (which go back to " + msg.oldest + "). Each counts in the entering class of their first quarter in the PhD or MA program. "
+                + "PhD: their last list entry says Graduated, with the Doctor of Philosophy title (true of 16 of 17 PhDs with detail records). Otherwise they left; an MA wouldn’t show on the lists. The candidacy lines leave them out." : "";
+            render();
+        };
 
         /* Instant hover popup for stage cells and dots: who a click would single out. */
         var tipEl = document.getElementById("tip");
@@ -860,7 +990,8 @@ javascript:(function(){
                 var fc0 = cohorts().filter(function(c){ return c.ay === ay; })[0], fr = fc0 && fc0.formers[parseInt(former.getAttribute("data-former"), 10)];
                 if(!fr) return hideTip();
                 var took = fr.outcome === "phd" && typeof fr.years === "number" ? "<div class='tn'>" + Math.round(fr.years * 100) / 100 + " years to PhD</div>" : "";
-                return showTip("<div class='th'" + (took ? "" : " style='margin:0'") + ">" + esc(fr.name + " · " + OUTCOME[fr.outcome].label + (fr.outcome === "left" ? (fr.when ? ", last enrolled " + fr.when : "") : fr.when ? " " + fr.when : "")) + "</div>" + took, e);
+                return showTip("<div class='th'" + (took ? "" : " style='margin:0'") + ">" + esc(fr.name + " · " + OUTCOME[fr.outcome].label + (fr.outcome === "left" ? (fr.when ? (fr.fromLists ? ", last on MyGrad's lists " : ", last enrolled ") + fr.when : "") : fr.when ? " " + fr.when : "")) + "</div>" + took
+                    + (fr.fromLists ? "<div class='tn' style='color:#cbbfe6'>From MyGrad's quarter lists" + (fr.outcome === "left" ? " (an MA wouldn't show there)" : "") + "</div>" : ""), e);
             }
             if(cell){
                 var i = parseInt(cell.getAttribute("data-stage"), 10);
