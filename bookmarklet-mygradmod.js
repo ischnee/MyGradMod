@@ -110,7 +110,8 @@ javascript:(function(){
        time). Students found only there, in the PhD (Pre-Doctor, Doctor of Philosophy) or MA program, join the entering
        class of their first quarter in it. Their last list entry gives the outcome: "Graduated" with the Doctor of
        Philosophy title is a PhD (16 of 17 PhDs with detail records ended that way, and none of 29 others); "Graduated"
-       without it is an MA; anything else means they left. Only these reach the dashboard: counts per class, and for each
+       without it is an MA; anything else means they left, with an MA if any list shows them "Graduated" in the Master
+       of Arts program (older records only: none of 34 recent MAs with detail records show one). Only these reach the dashboard: counts per class, and for each
        student the name, outcome, quarter and years to PhD shown on hover, as for other former students. */
     function loadListHistory(ctx){
         var QS = { 1: "Win", 2: "Spr", 3: "Sum", 4: "Aut" }, onLists = {}, year = nextQ.year, empty = 0, oldest = null;
@@ -137,8 +138,14 @@ javascript:(function(){
                     h.maOnly++; h.listedMa++;
                     h.formers.push({ name: last.name, outcome: "ma", when: when, fromLists: true });
                 } else {
-                    h.left++; h.listedLeft++;
-                    h.formers.push({ name: last.name, outcome: "left", when: when, fromLists: true });
+                    var maRow = rs.filter(function(r){ return /graduated/i.test(r.status) && /MASTER OF ARTS/i.test(r.title); })[0];
+                    if(maRow){
+                        h.maOnly++; h.listedMa++;
+                        h.formers.push({ name: last.name, outcome: "ma", when: QS[maRow.code] + " " + maRow.year, fromLists: true });
+                    } else {
+                        h.left++; h.listedLeft++;
+                        h.formers.push({ name: last.name, outcome: "left", when: when, fromLists: true });
+                    }
                 }
             });
             tell({ cohorts: Object.keys(extra).map(function(key){ return extra[key]; }), found: found, oldest: oldest });
@@ -960,7 +967,7 @@ javascript:(function(){
             el.textContent = msg.found ? "· " + msg.found + " more from MyGrad’s quarter lists" : "";
             toast(msg.found ? "Full history added: <b>" + msg.found + "</b> more former students in Entering classes." : "Full history checked: no more former students found.", 6000);
             el.title = msg.found ? msg.found + " former students have no MyGrad detail record, only entries on its quarter lists (which go back to " + msg.oldest + "). Each counts in the entering class of their first quarter in the PhD or MA program. "
-                + "PhD: their last list entry says Graduated, with the Doctor of Philosophy title (true of 16 of 17 PhDs with detail records). Otherwise they left; an MA wouldn’t show on the lists. The candidacy lines leave them out." : "";
+                + "PhD: their last list entry says Graduated, with the Doctor of Philosophy title (true of 16 of 17 PhDs with detail records). Otherwise they left, with an MA if a list shows them Graduated in the Master of Arts program (MyGrad’s lists rarely record an MA). The candidacy lines leave them out." : "";
             render();
         };
 
@@ -991,7 +998,7 @@ javascript:(function(){
                 if(!fr) return hideTip();
                 var took = fr.outcome === "phd" && typeof fr.years === "number" ? "<div class='tn'>" + Math.round(fr.years * 100) / 100 + " years to PhD</div>" : "";
                 return showTip("<div class='th'" + (took ? "" : " style='margin:0'") + ">" + esc(fr.name + " · " + OUTCOME[fr.outcome].label + (fr.outcome === "left" ? (fr.when ? (fr.fromLists ? ", last on MyGrad's lists " : ", last enrolled ") + fr.when : "") : fr.when ? " " + fr.when : "")) + "</div>" + took
-                    + (fr.fromLists ? "<div class='tn' style='color:#cbbfe6'>From MyGrad's quarter lists" + (fr.outcome === "left" ? " (an MA wouldn't show there)" : "") + "</div>" : ""), e);
+                    + (fr.fromLists ? "<div class='tn' style='color:#cbbfe6'>From MyGrad's quarter lists" + (fr.outcome === "left" ? " (MyGrad’s lists rarely show an MA)" : "") + "</div>" : ""), e);
             }
             if(cell){
                 var i = parseInt(cell.getAttribute("data-stage"), 10);
