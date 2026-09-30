@@ -114,9 +114,13 @@ javascript:(function(){
         var onLists = {}, year = nextQ.year, empty = 0, oldest = null;
         var tell = function(msg){ try { if(!w.closed && w.mygradmodHistory) w.mygradmodHistory(msg); } catch(e){} };
         var finish = function(){
-            var built = ctx.rebuild(onLists), added = 0, reread = 0;
-            Object.keys(built.outcomes).forEach(function(k){ if(!(k in ctx.before)) added++; else if(ctx.before[k] !== built.outcomes[k]) reread++; });
-            tell({ cohorts: built.cohorts, replace: true, found: added, reread: reread, oldest: oldest });
+            /* Former students added by the lists, outcomes the lists changed, and current students the lists placed in a class. */
+            var built = ctx.rebuild(onLists), added = 0, reread = 0, admits = ctx.admits(onLists);
+            Object.keys(built.outcomes).forEach(function(k){
+                if(built.outcomes[k] === "enrolled") return;
+                if(!(k in ctx.before)) added++; else if(ctx.before[k] !== built.outcomes[k]) reread++;
+            });
+            tell({ cohorts: built.cohorts, replace: true, found: added, reread: reread, placed: Object.keys(admits).length, oldest: oldest, admits: admits });
         };
         (function next(){
             if(w.closed) return;
@@ -214,15 +218,17 @@ javascript:(function(){
             return words.pop() + ", " + words.join(" ");
         }
         function named(o, legal, d){ o.name = displayName(legal, d && d.StudentPreferredName); if(o.name !== legal) o.legalName = legal; return o; }
-        var seen = {}, makeLink = linkMaker(roster);
+        var seen = {}, makeLink = linkMaker(roster), studentKeys = [];
         var students = roster.map(function(r){
             seen[r.SystemKey] = true;
+            studentKeys.push(r.SystemKey);
             var d = detailByKey[r.SystemKey] || null;
             return named({ onRoster: true, link: links[String(r.StudentID)] || (makeLink ? makeLink(r) : ""), overall: r.StudentStatusDesc || "", quarter: (r.quarterStatus || "") + (r.nextOnly ? " (" + nextQ.label + ")" : ""),
                 degreeTitle: r.DegreeTitle || "", degreeCode: r.DegreeCode || "", credits: r.credits, d: d }, r.LegalName || (d ? d.StudentName : ""), d);
         });
         Object.keys(currentKeys).forEach(function(k){
             if(seen[k]) return;
+            studentKeys.push(k);
             var d = detailByKey[k];
             students.push(named({ link: makeLink ? makeLink({ SystemKey: k }) : "", overall: d.Status, quarter: "Not on MyGrad's " + listsLabel + " lists", degreeTitle: d.DegreeTitle, degreeCode: d.DegreeCode, credits: "", d: d }, d.StudentName, d));
         });
@@ -246,6 +252,21 @@ javascript:(function(){
         var rosterTitle = {}, isCurrent = Object.assign({}, seen, currentKeys);
         roster.forEach(function(r){ rosterTitle[r.SystemKey] = r.DegreeTitle || ""; });
         var PROGRAM_TITLE = /DOCTOR OF PHILOSOPHY|PRE-?\s?DOCTOR|MASTER OF ARTS/i, NON_DEGREE_TITLE = /CERTIFICATE|^\s*GNM/i;
+        /* Admission quarters read loosely: "AUT", "Aut", "Autumn" or "Fall" are all Autumn. */
+        function normQtr(q){ var t = String(q || "").trim().toUpperCase().slice(0, 3); return t === "FAL" ? "AUT" : t; }
+        function usableAdmit(d){ return !!d && !!parseInt(d.GradAdmitYr, 10) && QN[normQtr(d.GradAdmitQtr)] !== undefined; }
+        /* Current students with no usable admission quarter on their detail record (or no detail record) take their class from
+           their first quarter in the program on MyGrad's lists, once the lists are read: { index in students: class }. */
+        function admitsFromLists(onLists){
+            var out = {};
+            studentKeys.forEach(function(k, i){
+                if(usableAdmit(detailByKey[k])) return;
+                var first = (onLists[k] || []).filter(function(r){ return PROGRAM_TITLE.test(r.title) && !NON_DEGREE_TITLE.test(r.title); })
+                    .sort(function(a, b){ return a.idx - b.idx; })[0];
+                if(first) out[i] = { ay: first.code >= 3 ? first.year : first.year - 1, from: QS[first.code] + " " + first.year };
+            });
+            return out;
+        }
         function when(line){ var q = String(line || "").match(/^(win|spr|sum|aut)\w*,?\s+(\d{4})/i); return q ? q[1].charAt(0).toUpperCase() + q[1].slice(1, 3).toLowerCase() + " " + q[2] : ""; }
         function buildHistory(onLists){
             var history = {}, outcomes = {};
@@ -258,7 +279,7 @@ javascript:(function(){
                 /* The lists can bring back a former student whose latest record is a certificate or non-matriculated one; a current
                    student's own record decides (they're in Students with it). */
                 if(!detailDegree && (current || !inProgram.length)) return;
-                var yr = d ? parseInt(d.GradAdmitYr, 10) : NaN, qtr = d ? String(d.GradAdmitQtr || "").trim().toUpperCase() : "";
+                var yr = d ? parseInt(d.GradAdmitYr, 10) : NaN, qtr = d ? normQtr(d.GradAdmitQtr) : "";
                 var entry = detailDegree && yr && QN[qtr] !== undefined ? { idx: yr * 4 + QN[qtr], ay: qtr === "AUT" || qtr === "SUM" ? yr : yr - 1 }
                     : inProgram.length ? { idx: inProgram[0].idx, ay: inProgram[0].code >= 3 ? inProgram[0].year : inProgram[0].year - 1, fromLists: true } : null;
                 if(!entry) return;
@@ -319,7 +340,7 @@ javascript:(function(){
         w.document.open();
         w.document.write(PAGE_HTML + "<script>(" + dashboard.toString() + ")(" + json + ");<\/script></body></html>");
         w.document.close();
-        loadListHistory({ rebuild: buildHistory, before: built.outcomes });
+        loadListHistory({ rebuild: buildHistory, before: built.outcomes, admits: admitsFromLists });
     }).catch(function(err){
         w.document.body.innerHTML = "<p style='font-family:sans-serif;padding:20px;color:#b91c1c'>Couldn't load the student list from MyGrad (" + err.message + "). Reload the By Quarter page and try again.</p>";
     });
@@ -378,7 +399,7 @@ javascript:(function(){
         /* Academic years start in autumn; summer admits join the autumn cohort that follows. */
         var now = new Date(data.generated);
         var currentAY = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
-        function admitAY(qtr, yr){ var y = parseInt(yr, 10); if(!y) return null; return qtr === "AUT" || qtr === "SUM" ? y : y - 1; }
+        function admitAY(qtr, yr){ var y = parseInt(yr, 10), q = String(qtr || "").trim().toUpperCase().slice(0, 3); if(!y) return null; return q === "AUT" || q === "FAL" || q === "SUM" ? y : y - 1; }
 
         /* The Philosophy MA / PhD: a granted request in MyGrad, or the degree in MyGrad's "UW degrees" list. Other degrees don't count. */
         function philMA(d){ return /granted|awarded/i.test(d.MastersRequests) || /MASTER OF ARTS \(PHILOSOPHY\)/i.test(d.UWDegrees); }
@@ -826,10 +847,11 @@ javascript:(function(){
                 var d = s.d;
                 var name = s.link ? "<a href='" + esc(s.link) + "' target='_blank' rel='noopener'>" + esc(s.name) + "</a>" : esc(s.name);
                 var status = esc(s.overall) + "<div class='small'>" + esc(s.quarter) + (s.credits !== "" && s.credits !== null && s.credits !== undefined ? " · " + esc(s.credits) + " cr" : "") + "</div>";
-                var admitted = d && d.GradAdmitYr ? "<div class='small'>since " + esc(d.GradAdmitQtr + " " + d.GradAdmitYr) + "</div>" : "";
+                var admitted = s.admitFromLists ? "<div class='small' title='No admission quarter on MyGrad’s record: the class is from their first quarter in the program on MyGrad’s lists'>since " + esc(s.admitFromLists) + " (MyGrad’s lists)</div>"
+                    : d && d.GradAdmitYr ? "<div class='small'>since " + esc(d.GradAdmitQtr + " " + d.GradAdmitYr) + "</div>" : "";
                 var flags = flagsFor(s).map(function(f){ return chip(f[0], f[1]); }).join("") + notes(s);
                 var lit = !!(fc && fc(s));
-                return "<tr class='" + (d ? "" : "limited") + (hl && hl(s) ? " hl" + (fc && !lit ? " soft" : "") : "") + (lit ? " focus" : "") + "'>" + (lead || "") + "<td class='nm'>" + name + "</td><td>" + connector(s, lit) + "</td><td>" + esc(s.level) + "<div class='small'>" + esc(s.program) + "</div></td>"
+                return "<tr class='" + (d ? "" : "limited") + (hl && hl(s) ? " hl" + (fc && !lit ? " soft" : "") : "") + (lit ? " focus" : "") + "'>" + (lead || "") + "<td class='nm'" + (s.admitFromLists ? " title='Class from MyGrad’s lists: first in the program " + esc(s.admitFromLists) + " (no admission quarter on record)'" : "") + ">" + name + "</td><td>" + connector(s, lit) + "</td><td>" + esc(s.level) + "<div class='small'>" + esc(s.program) + "</div></td>"
                     + (grouped ? "" : "<td>" + (s.year === null ? "—" : s.year) + admitted + "</td>") + "<td>" + status + "</td><td>" + (d ? lines(d.AdvisorChair).map(esc).join("<br>") || "—" : "") + "</td><td>" + milestones(s)
                     + "</td><td>" + funding(s) + "</td><td>" + flags + "</td></tr>";
             };
@@ -849,7 +871,7 @@ javascript:(function(){
                 });
                 if(other.length){
                     var why = [["certificate", function(s){ return s.level === "Certificate"; }], ["non-matriculated", function(s){ return s.level === "Non-matriculated"; }],
-                        ["no MyGrad details", function(s){ return !s.d; }], ["no admission date", function(s){ return !!s.d && !s.nonDegree && s.cohort === null; }]]
+                        ["no MyGrad details", function(s){ return !s.d; }], [historyPending ? "no admission date (checking MyGrad’s lists…)" : "no admission date", function(s){ return !!s.d && !s.nonDegree && s.cohort === null; }]]
                         .map(function(w){ var n = other.filter(w[1]).length; return n ? n + " " + w[0] : ""; }).filter(Boolean).join(", ");
                     rows.push(group(other, cohortCell("No cohort", why, other, null)));
                 }
@@ -958,6 +980,7 @@ javascript:(function(){
             histToast.querySelector(".t").innerHTML = html;
             if(fade) setTimeout(function(){ if(histToast){ histToast.classList.add("gone"); setTimeout(function(){ if(histToast) histToast.remove(); }, 450); } }, fade);
         }
+        var historyPending = true;
         window.mygradmodHistory = function(msg){
             var el = document.getElementById("hist-status");
             if(msg.progress){
@@ -967,15 +990,25 @@ javascript:(function(){
                 return;
             }
             data.cohorts = msg.replace ? msg.cohorts : data.cohorts.concat(msg.cohorts || []);
+            /* Current students with no admission quarter on record join the class of their first quarter on MyGrad's lists. */
+            Object.keys(msg.admits || {}).forEach(function(i){
+                var s = data.students[i], a = msg.admits[i];
+                if(!s) return;
+                s.cohort = a.ay; s.year = currentAY - a.ay + 1; s.admitFromLists = a.from;
+            });
+            historyPending = false;
             mergedFor = null;
             historyDerived();
             fillPrograms();
             updateSkippedNote();
-            el.textContent = msg.found ? "· " + msg.found + " more from MyGrad’s quarter lists" : msg.reread ? "· " + msg.reread + " updated from MyGrad’s quarter lists" : "";
+            el.textContent = msg.found ? "· " + msg.found + " more from MyGrad’s quarter lists" : msg.reread || msg.placed ? "· " + (msg.reread + msg.placed) + " updated from MyGrad’s quarter lists" : "";
+            var extras = [msg.reread ? "<b>" + msg.reread + "</b> updated" : "", msg.placed ? "<b>" + msg.placed + "</b> current student" + (msg.placed === 1 ? "" : "s") + " placed in their class" : ""].filter(Boolean);
             toast((msg.found ? "Full history added: <b>" + msg.found + "</b> more former students in Entering classes" : "Full history checked: no more former students found")
-                + (msg.reread ? ", and <b>" + msg.reread + "</b> updated." : "."), 6000);
-            el.title = msg.found || msg.reread ? (msg.found ? msg.found + " former students were found only through MyGrad’s quarter lists (which go back to " + msg.oldest + ")" : "No more former students were found")
-                + (msg.reread ? ", and the lists changed the outcome of " + msg.reread + " already counted (for example, a PhD their detail record didn’t show)" : "") + ". A student with no admission quarter on record counts in the entering class of their first quarter in the PhD or MA program. "
+                + (extras.length ? ", and " + extras.join(" and ") + "." : "."), 6000);
+            el.title = msg.found || msg.reread || msg.placed ? (msg.found ? msg.found + " former students were found only through MyGrad’s quarter lists (which go back to " + msg.oldest + ")" : "No more former students were found")
+                + (msg.reread ? ", and the lists changed the outcome of " + msg.reread + " already counted (for example, a PhD their detail record didn’t show)" : "")
+                + (msg.placed ? "; " + msg.placed + " current student" + (msg.placed === 1 ? " has" : "s have") + " no admission quarter on record and joined the class of their first quarter on the lists" : "")
+                + ". A student with no admission quarter on record counts in the entering class of their first quarter in the PhD or MA program. "
                 + "PhD: a list shows them Graduated with the Doctor of Philosophy title (true of 16 of 17 PhDs with detail records), if their detail record doesn’t show it. MA: Graduated under another program title (MyGrad’s lists rarely record an MA). Otherwise they left. Students with no detail record have no candidacy record, so the candidacy lines leave them out." : "";
             render();
         };
