@@ -31,7 +31,11 @@ The script does not collect or use any information about the student outside of 
   - Nothing is sent anywhere.
   - Nothing is stored except your display settings: flag thresholds, the classes the slider selects, and which sections are collapsed. These are kept in your browser.
 - **It takes only the fields it needs.** It never uses ethnicity, gender, visa status, residency, addresses, emails, NetIDs, student numbers, GRE scores or previous institutions.
-- **Former students appear only as class totals.** The one exception: hovering a former student's dot shows their name and outcome, and for PhDs, their years to degree. Showing their initials on the dots is an optional setting, off by default.
+- **Former students appear as class totals, and by name only where you look for them.** A former student's name shows in two places:
+  - when you hover their dot in Entering classes
+  - in the Former students panel, which starts closed every time
+  - Either way you see only their name, entering class and outcome, the quarter it happened, their years to degree for PhDs, and whether the record came from MyGrad's quarter lists. Nothing else from their records reaches the dashboard.
+  - Showing former students' initials on the dots is an optional setting, off by default.
 - **The dashboard's footer repeats the rules:** these are student records protected by FERPA, for authorized faculty and staff only. Don't share or screenshot them outside that group, and close the tab when you're done.
 - **It was built and tested without seeing student data.**
   - MyGrad's formats were learned from console checks that printed only field names, value formats or counts.
@@ -94,6 +98,10 @@ This short script loads the latest version of MyGradMod from this repository eac
   - Views: In the program, Flagged, All.
   - Search by name or advisor.
   - Clicking a cohort, stage cell or dot highlights those students across the page.
+- **Former students:** closed until you open it. It lists everyone who has finished or left, by entering class, with outcome, quarter and years to PhD.
+  - Views: All, PhD, Left with MA, Left.
+  - Search by name.
+  - Clicking a class shows it in Entering classes.
 - **Settings (gear icon):** flag thresholds, plus display options.
 
 Hovering explains most numbers in place, e.g. why a cell is marked "stalled".
