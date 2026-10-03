@@ -143,6 +143,138 @@ javascript:(function(){
             });
         })();
     }
+    /* Candidacy and dissertation (800) credits, read from each current doctoral student's own MyGrad pages once the dashboard
+       is open, as Ben Marwick's table-audit bookmarklet does (uw-anthro-web-helpers, Sept 2026); what these pages hold and how
+       they behave comes from his notes there.
+       - Candidacy: "Candidacy Granted" in the status column of the doctoral exam requests page. Ben found MyGrad's HasPhC field
+         says No for some students with Candidacy Granted there (MyGradMod issue #1), so a grant on that page counts too. The
+         page is reached through threshold.aspx, which keeps the student in MyGrad's server session: overlapping requests are
+         served other students' pages, so these are read one at a time (with no pause between them: the MyGrad tab is in the
+         background, where Chrome stretches any timer to a second). It needs the department's MyGrad org number (findOrg).
+       - 800 credits: the Credits cell of every 800-level course on the transcript, whatever the grade, and the quarter it falls
+         in where the transcript labels quarters. Transcripts are read three at a time.
+       Each page must name the student it was asked for; one that doesn't is retried, then reported as unread. A sign-in page
+       stops the reading. Only counts, quarters and the candidacy exam date reach the dashboard: no courses, titles or grades. */
+    function findOrg(){
+        var m = location.search.match(/[?&](?:orgid|org)=(\d+)/i);
+        if(m) return m[1];
+        var n = {};
+        document.querySelectorAll("a[href], form[action], iframe[src]").forEach(function(el){
+            var u = el.getAttribute("href") || el.getAttribute("action") || el.getAttribute("src") || "", x = u.match(/[?&](?:orgid|org)=(\d+)/i);
+            if(x) n[x[1]] = (n[x[1]] || 0) + 1;
+        });
+        return Object.keys(n).sort(function(a, b){ return n[b] - n[a]; })[0] || null;
+    }
+    var SIGNED_OUT = /UW NetID sign-in|Stale Request/i;
+    function norm(v){ return String(v || "").replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim(); }
+    /* A page as text and a document, once it names the student: "Last, First" must both appear in the part nameRe picks out. */
+    function readPage(url, nameRe, legal, tries){
+        var n = norm(legal), c = n.indexOf(","), last = (c < 0 ? n : n.slice(0, c)).trim().toLowerCase(), first = (c < 0 ? "" : n.slice(c + 1).trim().split(" ")[0]).toLowerCase();
+        return (function attempt(t){
+            return fetch(url, { credentials: "include" }).then(function(r){
+                return r.text().then(function(html){
+                    if(SIGNED_OUT.test(html)) return { signedOut: true };
+                    if(!r.ok) throw new Error("HTTP " + r.status);
+                    var doc = new DOMParser().parseFromString(html, "text/html");
+                    doc.querySelectorAll("script, style, noscript").forEach(function(x){ x.remove(); });
+                    var text = norm(doc.body ? doc.body.textContent : ""), m = text.match(nameRe), who = m ? m[1].toLowerCase() : "";
+                    if(who && who.indexOf(last) !== -1 && who.indexOf(first) !== -1) return { doc: doc, text: text };
+                    throw new Error("the page was for a different student");
+                });
+            }).catch(function(e){
+                if(t + 1 < tries) return new Promise(function(res){ setTimeout(res, 400); }).then(function(){ return attempt(t + 1); });
+                return { error: e.message };
+            });
+        })(0);
+    }
+    var QUARTER_RE = /\b(win(?:ter)?|spr(?:ing)?|sum(?:mer)?|aut(?:umn)?|fall)\.?\s+(?:quarter\s+)?(\d{4})\b/gi, QUARTER_N = { win: 0, spr: 1, sum: 2, aut: 3, fal: 3 };
+    /* The last quarter named in some text, as { label: "Aut 2024", idx } (idx orders quarters), or null. */
+    function quarterIn(text){
+        var m, last = null;
+        QUARTER_RE.lastIndex = 0;
+        while((m = QUARTER_RE.exec(text))) last = m;
+        if(!last) return null;
+        var q = last[1].slice(0, 3).toLowerCase(), label = q === "fal" ? "Aut" : q.charAt(0).toUpperCase() + q.slice(1);
+        return { label: label + " " + last[2], idx: +last[2] * 4 + QUARTER_N[q] };
+    }
+    function cellsOf(tr){ return Array.prototype.filter.call(tr.children, function(c){ return c.tagName === "TD"; }).map(function(td){ return norm(td.textContent); }); }
+    function isCourseTable(t){ return Array.prototype.some.call(t.querySelectorAll("th"), function(th){ return /course title/i.test(th.textContent); }); }
+    /* The quarter a transcript table belongs to: its caption or head, or the nearest label before it, unless another course
+       table or the page heading ("Last Enrolled") comes first. */
+    function quarterOf(t){
+        var own = t.querySelector("caption, thead"), q = own && quarterIn(norm(own.textContent));
+        if(q) return q;
+        for(var el = t, steps = 0; el && steps < 15; steps++){
+            if(!el.previousElementSibling){ el = el.parentElement; if(!el || el.tagName === "BODY") return null; continue; }
+            el = el.previousElementSibling;
+            var text = norm(el.textContent);
+            if(/last enrolled/i.test(text) || (el.tagName === "TABLE" ? isCourseTable(el) : Array.prototype.some.call(el.querySelectorAll("table"), isCourseTable))) return null;
+            if((q = quarterIn(text))) return q;
+        }
+        return null;
+    }
+    function read800(doc){
+        var rows = [];
+        Array.prototype.filter.call(doc.querySelectorAll("table"), isCourseTable).forEach(function(t){
+            var q = quarterOf(t);
+            Array.prototype.forEach.call(t.querySelectorAll("tbody tr"), function(tr){
+                var c = cellsOf(tr);
+                if(c.length < 4){ var rq = quarterIn(c.join(" ")); if(rq) q = rq; return; }
+                if(!/^[A-Z&][A-Z& ]*?\s*800(?!\d)/i.test(c[0])) return;
+                var cr = parseFloat(c[2]);
+                rows.push({ cr: isNaN(cr) ? 0 : cr, q: q });
+            });
+        });
+        var quarters = {}, labelled = rows.every(function(r){ return !!r.q; });
+        rows.forEach(function(r){ if(r.q) quarters[r.q.idx] = r.q.label; });
+        var idx = Object.keys(quarters).map(Number).sort(function(a, b){ return a - b; });
+        return { credits: rows.reduce(function(sum, r){ return sum + r.cr; }, 0), entries: rows.length,
+            quarters: labelled ? idx.length : null, qIdx: labelled ? idx : null, first: labelled && idx.length ? quarters[idx[0]] : null, last: labelled && idx.length ? quarters[idx[idx.length - 1]] : null };
+    }
+    function readCandidacy(doc){
+        var granted = [];
+        Array.prototype.forEach.call(doc.querySelectorAll("table"), function(t){
+            var head = Array.prototype.map.call(t.querySelectorAll(":scope > thead th, :scope > tbody > tr > th, :scope > tr > th"), function(x){ return norm(x.textContent); }).join("|");
+            if(head.indexOf("Exam Date") === -1) return;
+            Array.prototype.forEach.call(t.querySelectorAll(":scope > tbody > tr, :scope > tr"), function(tr){
+                var c = cellsOf(tr);
+                if(c.length >= 4 && /candidacy\s+granted/i.test(c[1])){ var m = c[3].match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); granted.push({ date: m ? m[0] : null, t: m ? new Date(+m[3], +m[1] - 1, +m[2]).getTime() : 0 }); }
+            });
+        });
+        granted.sort(function(a, b){ return b.t - a.t; });
+        return { cand: granted.length > 0, date: granted.length ? granted[0].date : null };
+    }
+    function loadMilestones(targets){
+        var org = findOrg(), results = {}, stop = false, trDone = 0, rqDone = 0, queue = targets.slice();
+        var tell = function(msg){ try { if(!w.closed && w.mygradmodMilestones) w.mygradmodMilestones(msg); } catch(e){} };
+        var progress = function(){ tell({ progress: { transcripts: trDone, requests: org ? rqDone : null, total: targets.length } }); };
+        var record = function(i){ return results[i] || (results[i] = {}); };
+        progress();
+        var worker = function(){
+            if(stop || w.closed || !queue.length) return Promise.resolve();
+            var t = queue.shift();
+            return readPage(location.origin + "/mgp-dept.stu.detail/home/transcript?id=" + encodeURIComponent(t.key), /Transcripts for\s*(.+?)\s+Last Enrolled/i, t.name, 3).then(function(r){
+                if(r.signedOut){ stop = true; return; }
+                if(r.error) record(t.i).trError = r.error; else Object.assign(record(t.i), read800(r.doc));
+                trDone++;
+                progress();
+            }).then(worker);
+        };
+        var transcripts = Promise.all([worker(), worker(), worker()]);
+        var requests = !org ? Promise.resolve() : targets.reduce(function(p, t){
+            return p.then(function(){
+                if(stop || w.closed) return;
+                var url = location.origin + "/mgp-dept/stu/request/threshold.aspx?id=" + encodeURIComponent(t.key) + "&ORG=" + org + "&REDIRECT=../list_student_requests.aspx?id=" + encodeURIComponent(t.key);
+                return readPage(url, /Doctoral Exam Requests:\s*([^|]{1,60}?)\s*\|/i, t.name, 4).then(function(r){
+                    if(r.signedOut){ stop = true; return; }
+                    if(r.error) record(t.i).candError = r.error; else { var c = readCandidacy(r.doc); record(t.i).cand = c.cand; record(t.i).candDate = c.date; }
+                    rqDone++;
+                    progress();
+                });
+            });
+        }, Promise.resolve());
+        Promise.all([transcripts, requests]).then(function(){ tell({ done: true, results: results, signedOut: stop, org: !!org, total: targets.length }); });
+    }
     function rowsOf(d){
         if(Array.isArray(d)) return d;
         if(d && typeof d === "object") return d.Data || d.data || Object.values(d).find(Array.isArray) || [];
@@ -168,7 +300,7 @@ javascript:(function(){
         + '#cohorts .blk{border-left:2px solid #e8e3f3}#cohorts td.st-none{color:#c9c9c9}#cohorts td.st-on{color:#2e1a5c;font-weight:600}#cohorts tbody tr td.st-on.c-late,#cohorts tbody tr td.c-late[style]{color:#6b2f05}#cohorts td{vertical-align:middle}#cohorts td.summary{white-space:nowrap}#cohorts td.sc{cursor:pointer}#cohorts td.sc.sel{box-shadow:inset 0 0 0 2.5px #1d4ed8}#cohorts td.strip-cell{text-align:left;white-space:nowrap;padding-right:13px;width:1%}.stripwrap{display:flex;align-items:center;gap:6px}.striptext{display:inline-flex;align-items:center;gap:4px}.stnum{min-width:18px;text-align:right;font-variant-numeric:tabular-nums}.stof{min-width:27px;line-height:1.15}.strip{display:flex;flex-wrap:wrap;gap:7px 12px;flex:none;width:max-content;max-width:150px}@media (min-width:1720px){.strip{max-width:312px}}.dgrp{display:flex;gap:5px}.sdot{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;cursor:pointer;color:#fff;font-size:11px;font-weight:700;font-style:normal;letter-spacing:-.2px;line-height:1;flex:none}.sdot.gone{background:#fff;box-shadow:inset 0 0 0 1.5px #b9b0cf;cursor:default}.sdot.ring{box-shadow:0 0 0 2px #fff,0 0 0 4px #1d4ed8}.conn{display:inline-flex;align-items:center;gap:3px;padding:3px 5px;border-radius:4px;cursor:pointer;white-space:nowrap}.conn b{display:block;width:15px;height:15px;border-radius:3px;box-shadow:inset 0 0 0 1px #cbbfe6}.conn .cn{margin-left:7px;font-size:13px;color:#555}.conn.lit{box-shadow:0 0 0 2px #1d4ed8;background:#fff}tr.hl.soft td{background:#f5f9fe}tr.hl.soft td:first-child{box-shadow:inset 4px 0 0 #bcd3f5}tr.focus td{background:#d3e3f8}#cohorts td.flagcell{cursor:pointer;font-weight:600;color:#92400e}#cohorts td.flagcell.sel{box-shadow:inset 0 0 0 2.5px #1d4ed8}#cohorts td.oc{font-weight:600}#cohorts td.phdpair,#cohorts th.phdpair{background:#f1f8f4}#cohorts th.oh{white-space:nowrap;line-height:1.2;vertical-align:bottom;padding-left:6px;padding-right:6px}#cohorts th.fit{line-height:1.2}.ohd{display:inline-grid;grid-auto-flow:column;align-items:center;column-gap:6px;text-align:left}#cohorts thead tr:last-child th{vertical-align:bottom}.sdot.gone{cursor:default}#tip{position:fixed;z-index:20;pointer-events:none;display:none;max-width:300px;background:#2e1a5c;color:#fff;font-size:13px;line-height:1.45;padding:8px 11px;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25)}#tip .th{font-weight:600;margin-bottom:3px}#tip .tn{color:#e8e3d3}#tip ul{margin:4px 0 0;padding-left:16px}#tip .tf{margin-top:5px;color:#cbbfe6;font-size:12px}tr.focus td:first-child{box-shadow:inset 5px 0 0 #1d4ed8}'
         + '.c-ok{color:#047857;font-weight:600}#cohorts tbody tr td.c-late{background:#fef3c7;color:#92400e;font-weight:600}'
         + '.panel{background:#fff;margin:15px 25px;padding:15px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.05);overflow-x:auto}'
-        + '.panel h2{margin:0 0 10px;color:#4b2e83;font-size:20px;border-bottom:2px solid #b7a57a;padding-bottom:6px}.panel h2.dark-head{display:flex;align-items:center;gap:10px;margin:-15px -15px 14px;padding:10px 20px 8px;min-height:44px;background:#2e1a5c;color:#fff;border-bottom:none;border-radius:6px 6px 0 0}.panel.collapsed h2.dark-head{margin-bottom:-15px;padding-bottom:10px;border-radius:6px}.panel.collapsed .dark-head .seg,.panel.collapsed .dark-head select,.panel.collapsed .dark-head input,.panel.collapsed .dark-head .bar-opt{display:none}.classes-head #cohort-note,.classes-head #hist-status{color:#cbbfe6}.classes-head #hist-status{white-space:nowrap;cursor:help}.classes-head .panel-toggle{white-space:nowrap}.panel.collapsed #class-slider,.panel.collapsed #cohort-note,.panel.collapsed #hist-status{display:none}#class-slider{position:relative;flex:1;height:46px;margin:0 44px;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none;font-weight:normal}.sl-seg{position:absolute;top:15px;height:4px;background:#8a72d6}.sl-seg.hist{background:#56565d}.sl-seg.hist.gap{background:repeating-linear-gradient(90deg,#56565d 0 4px,transparent 4px 8px)}.sl-seg.sel{top:13px;height:8px;background:#cdb8fa;cursor:grab}.sl-seg.sel.hist{background:#9d9da5}.sl-seg.sel.hist.gap{background:repeating-linear-gradient(90deg,#9d9da5 0 5px,transparent 5px 8px)}.sl-dot{position:absolute;top:17px;width:22px;height:22px;margin:-11px 0 0 -11px;padding:0;border-radius:50%;background:#efe9f9;border:3px solid #2e1a5c;box-shadow:0 0 0 2px #b9abd8,0 1px 5px rgba(0,0,0,.45);cursor:ew-resize}.sl-dot:focus-visible{outline:none;box-shadow:0 0 0 2px #b9abd8,0 0 0 6px rgba(255,255,255,.35)}.sl-lab{position:absolute;top:30px;transform:translateX(-50%);font-size:13px;font-weight:600;color:#efe9f9;white-space:nowrap;pointer-events:none}.sl-lab.sl-end{color:rgba(255,255,255,.5);font-weight:normal}.set-line{display:flex;gap:6px;align-items:center}.set-note{margin:4px 0 12px 22px}.dark-head .seg{display:inline-flex;margin-left:14px;border:1px solid #8f7bc4;border-radius:15px;overflow:hidden;font-weight:normal}.seg button{background:none;border:0;color:#e6ddf7;font:inherit;font-size:14px;padding:4px 13px;cursor:pointer}.seg button+button{border-left:1px solid #8f7bc4}.seg button b{color:#fff;margin-left:2px}.seg button:hover{background:rgba(255,255,255,.08)}.seg button.on{background:#c3b1f0;color:#2e1a5c}.seg button.on b{color:#2e1a5c}.bar-fill{flex:1}.dark-head select,.dark-head input[type=search]{font-size:14px;padding:4px 7px;border:0;border-radius:5px;font-weight:normal}.dark-head input[type=search]{width:210px}.bar-opt{display:inline-flex;align-items:center;gap:5px;font-size:14px;font-weight:normal;color:#e6ddf7;cursor:pointer;margin-left:4px}.hl-line:empty{display:none}.hl-line{margin:-4px 0 8px}.summary{display:grid;grid-template-columns:1.45fr .8fr 1fr 1.75fr;row-gap:14px;background:#fff;margin:15px 25px 0;padding:14px 0;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.05)}.summary section{padding:0 22px;border-left:2px solid #e8e3f3}.summary section:first-child{border-left:none}@media (max-width:1000px){.summary{grid-template-columns:1fr}.summary section{border-left:none}}.summary h4{margin:0 0 4px;color:#85754d;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}.sm-big{display:flex;align-items:center;gap:12px;font-size:29px;font-weight:700;color:#4b2e83;line-height:1.2;margin-bottom:4px}.sm-parts{display:flex;flex-wrap:wrap;gap:2px 4px;font-size:14px;color:#444}.sm-note{font-size:13px;color:#666}.sm-win{background:none;border:0;padding:0;font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer;text-decoration:underline dotted}.sm-win:hover{color:#4b2e83}.sm-of{font-size:13px;font-weight:normal;color:#666;line-height:1.25;margin-left:4px}.sm-bigs{display:flex;gap:48px;flex-wrap:wrap;margin-bottom:6px}.sm-lines{display:flex;flex-direction:column;gap:3px;font-size:13px;color:#444}.sm-lines b{color:#2e1a5c}.sm-out .small{font-size:12px}.sm-foot{margin-top:3px;font-size:12px;color:#666}#cohorts tr.rates td{border-bottom:none;padding-top:0;font-size:13px;color:#666}#cohorts td.rate-l{text-align:left}#cohorts tr.star td{border:none;background:#fff;padding-top:6px;text-align:right;font-size:13px;color:#666;white-space:nowrap}.outcomes:empty{display:none}.outcomes{margin:12px 0 0;font-size:14px;color:#333;line-height:1.7}.outcomes strong{color:#2e1a5c}.outcomes .sep{color:#bbb;margin:0 8px}.outcomes b{color:#2e1a5c}.sm-sep{width:1px;align-self:stretch;background:#ddd;margin:3px 10px 3px 4px}.sm-others{margin-top:4px;align-items:center;font-size:13px}.sm-others .sm-note{margin-right:6px}.sm-n{background:none;border:0;border-radius:4px;padding:2px 6px;margin-left:-6px;font:inherit;color:inherit;cursor:pointer}.sm-n b{color:#2e1a5c}.sm-n:hover{background:#f3eefc}.sm-n.on{background:#dbe8fb;box-shadow:inset 0 0 0 1.5px #2563eb}.sm-n.big{font-size:29px;font-weight:700;padding:0 6px}.sm-n.big b{color:#4b2e83}.sm-n.late b{color:#92400e}#roster td.coh,#formers td.coh{position:relative;vertical-align:top;background:#fff;box-shadow:none;padding:0 10px 0 22px;cursor:pointer;width:1%;min-width:96px;border-bottom:1px solid #e2dcef}.coh-bar{position:absolute;left:8px;top:7px;bottom:7px;width:4px;border-radius:2px;background:#c9bdea}#formers td.coh:hover .coh-bar,#roster td.coh:hover .coh-bar{background:#9f8bd6}#formers td.coh.c-active .coh-bar,#roster td.coh.c-active .coh-bar{background:#2563eb;width:6px;left:7px}#roster td.coh.other{cursor:default}#roster td.coh.other .coh-bar{background:#d4d4d8}.coh-label{position:sticky;top:8px;display:flex;flex-direction:column;padding:8px 0;line-height:1.35;max-width:120px}.coh-label b{color:#2e1a5c;font-size:15px}.coh-label span{font-size:13px;color:#666}.coh-label em{font-style:normal;color:#92400e;font-weight:600}#formers td.coh.c-active .coh-label b,#roster td.coh.c-active .coh-label b{color:#1d4ed8}#roster.by-cohort tr.hl td.nm{box-shadow:inset 4px 0 0 #2563eb}#roster.by-cohort tr.hl.soft td.nm{box-shadow:inset 4px 0 0 #bcd3f5}#roster.by-cohort tr.focus td.nm{box-shadow:inset 5px 0 0 #1d4ed8}'
+        + '.panel h2{margin:0 0 10px;color:#4b2e83;font-size:20px;border-bottom:2px solid #b7a57a;padding-bottom:6px}.panel h2.dark-head{display:flex;align-items:center;gap:10px;margin:-15px -15px 14px;padding:10px 20px 8px;min-height:44px;background:#2e1a5c;color:#fff;border-bottom:none;border-radius:6px 6px 0 0}.panel.collapsed h2.dark-head{margin-bottom:-15px;padding-bottom:10px;border-radius:6px}.panel.collapsed .dark-head .seg,.panel.collapsed .dark-head select,.panel.collapsed .dark-head input,.panel.collapsed .dark-head .bar-opt{display:none}.classes-head #cohort-note,.classes-head #hist-status{color:#cbbfe6}.classes-head #hist-status{white-space:nowrap;cursor:help}.classes-head .panel-toggle{white-space:nowrap}.panel.collapsed #class-slider,.panel.collapsed #cohort-note,.panel.collapsed #hist-status,.panel.collapsed #ms-status{display:none}#ms-status{color:#cbbfe6;white-space:nowrap;cursor:help}#class-slider{position:relative;flex:1;height:46px;margin:0 44px;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none;font-weight:normal}.sl-seg{position:absolute;top:15px;height:4px;background:#8a72d6}.sl-seg.hist{background:#56565d}.sl-seg.hist.gap{background:repeating-linear-gradient(90deg,#56565d 0 4px,transparent 4px 8px)}.sl-seg.sel{top:13px;height:8px;background:#cdb8fa;cursor:grab}.sl-seg.sel.hist{background:#9d9da5}.sl-seg.sel.hist.gap{background:repeating-linear-gradient(90deg,#9d9da5 0 5px,transparent 5px 8px)}.sl-dot{position:absolute;top:17px;width:22px;height:22px;margin:-11px 0 0 -11px;padding:0;border-radius:50%;background:#efe9f9;border:3px solid #2e1a5c;box-shadow:0 0 0 2px #b9abd8,0 1px 5px rgba(0,0,0,.45);cursor:ew-resize}.sl-dot:focus-visible{outline:none;box-shadow:0 0 0 2px #b9abd8,0 0 0 6px rgba(255,255,255,.35)}.sl-lab{position:absolute;top:30px;transform:translateX(-50%);font-size:13px;font-weight:600;color:#efe9f9;white-space:nowrap;pointer-events:none}.sl-lab.sl-end{color:rgba(255,255,255,.5);font-weight:normal}.set-line{display:flex;gap:6px;align-items:center}.set-note{margin:4px 0 12px 22px}.dark-head .seg{display:inline-flex;margin-left:14px;border:1px solid #8f7bc4;border-radius:15px;overflow:hidden;font-weight:normal}.seg button{background:none;border:0;color:#e6ddf7;font:inherit;font-size:14px;padding:4px 13px;cursor:pointer}.seg button+button{border-left:1px solid #8f7bc4}.seg button b{color:#fff;margin-left:2px}.seg button:hover{background:rgba(255,255,255,.08)}.seg button.on{background:#c3b1f0;color:#2e1a5c}.seg button.on b{color:#2e1a5c}.bar-fill{flex:1}.dark-head select,.dark-head input[type=search]{font-size:14px;padding:4px 7px;border:0;border-radius:5px;font-weight:normal}.dark-head input[type=search]{width:210px}.bar-opt{display:inline-flex;align-items:center;gap:5px;font-size:14px;font-weight:normal;color:#e6ddf7;cursor:pointer;margin-left:4px}.hl-line:empty{display:none}.hl-line{margin:-4px 0 8px}.summary{display:grid;grid-template-columns:1.45fr .8fr 1fr 1.75fr;row-gap:14px;background:#fff;margin:15px 25px 0;padding:14px 0;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.05)}.summary section{padding:0 22px;border-left:2px solid #e8e3f3}.summary section:first-child{border-left:none}@media (max-width:1000px){.summary{grid-template-columns:1fr}.summary section{border-left:none}}.summary h4{margin:0 0 4px;color:#85754d;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}.sm-big{display:flex;align-items:center;gap:12px;font-size:29px;font-weight:700;color:#4b2e83;line-height:1.2;margin-bottom:4px}.sm-parts{display:flex;flex-wrap:wrap;gap:2px 4px;font-size:14px;color:#444}.sm-note{font-size:13px;color:#666}.sm-win{background:none;border:0;padding:0;font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer;text-decoration:underline dotted}.sm-win:hover{color:#4b2e83}.sm-of{font-size:13px;font-weight:normal;color:#666;line-height:1.25;margin-left:4px}.sm-bigs{display:flex;gap:48px;flex-wrap:wrap;margin-bottom:6px}.sm-lines{display:flex;flex-direction:column;gap:3px;font-size:13px;color:#444}.sm-lines b{color:#2e1a5c}.sm-out .small{font-size:12px}.sm-foot{margin-top:3px;font-size:12px;color:#666}#cohorts tr.rates td{border-bottom:none;padding-top:0;font-size:13px;color:#666}#cohorts td.rate-l{text-align:left}#cohorts tr.star td{border:none;background:#fff;padding-top:6px;text-align:right;font-size:13px;color:#666;white-space:nowrap}.outcomes:empty{display:none}.outcomes{margin:12px 0 0;font-size:14px;color:#333;line-height:1.7}.outcomes strong{color:#2e1a5c}.outcomes .sep{color:#bbb;margin:0 8px}.outcomes b{color:#2e1a5c}.sm-sep{width:1px;align-self:stretch;background:#ddd;margin:3px 10px 3px 4px}.sm-others{margin-top:4px;align-items:center;font-size:13px}.sm-others .sm-note{margin-right:6px}.sm-n{background:none;border:0;border-radius:4px;padding:2px 6px;margin-left:-6px;font:inherit;color:inherit;cursor:pointer}.sm-n b{color:#2e1a5c}.sm-n:hover{background:#f3eefc}.sm-n.on{background:#dbe8fb;box-shadow:inset 0 0 0 1.5px #2563eb}.sm-n.big{font-size:29px;font-weight:700;padding:0 6px}.sm-n.big b{color:#4b2e83}.sm-n.late b{color:#92400e}#roster td.coh,#formers td.coh{position:relative;vertical-align:top;background:#fff;box-shadow:none;padding:0 10px 0 22px;cursor:pointer;width:1%;min-width:96px;border-bottom:1px solid #e2dcef}.coh-bar{position:absolute;left:8px;top:7px;bottom:7px;width:4px;border-radius:2px;background:#c9bdea}#formers td.coh:hover .coh-bar,#roster td.coh:hover .coh-bar{background:#9f8bd6}#formers td.coh.c-active .coh-bar,#roster td.coh.c-active .coh-bar{background:#2563eb;width:6px;left:7px}#roster td.coh.other{cursor:default}#roster td.coh.other .coh-bar{background:#d4d4d8}.coh-label{position:sticky;top:8px;display:flex;flex-direction:column;padding:8px 0;line-height:1.35;max-width:120px}.coh-label b{color:#2e1a5c;font-size:15px}.coh-label span{font-size:13px;color:#666}.coh-label em{font-style:normal;color:#92400e;font-weight:600}#formers td.coh.c-active .coh-label b,#roster td.coh.c-active .coh-label b{color:#1d4ed8}#roster.by-cohort tr.hl td.nm{box-shadow:inset 4px 0 0 #2563eb}#roster.by-cohort tr.hl.soft td.nm{box-shadow:inset 4px 0 0 #bcd3f5}#roster.by-cohort tr.focus td.nm{box-shadow:inset 5px 0 0 #1d4ed8}'
         + '.panel-toggle{background:none;border:none;padding:0;margin:0 4px 0 0;font:inherit;color:inherit;cursor:pointer}.panel-toggle .chev{display:inline-block;width:18px;font-size:13px;transition:transform .15s}'
         + '.panel.collapsed .panel-body{display:none}.panel.collapsed h2{margin-bottom:0;border-bottom:none;padding-bottom:0}.panel.collapsed .panel-toggle .chev{transform:rotate(-90deg)}'
         + 'table{border-collapse:collapse;width:100%;font-size:14px}th{text-align:left;color:#4b2e83;border-bottom:2px solid #ddd;padding:6px 8px;cursor:pointer;white-space:nowrap}'
@@ -176,7 +308,7 @@ javascript:(function(){
         + '.chip{display:inline-block;border-radius:10px;padding:1px 8px;margin:1px 3px 1px 0;font-size:12px;font-weight:600;white-space:nowrap}'
         + '.yes{background:#d1fae5;color:#047857}.no{background:#f3f4f6;color:#6b7280}.red{background:#fee2e2;color:#b91c1c}.amber{background:#fef3c7;color:#92400e}.info{background:#e0e7ff;color:#3730a3}.gray{background:#f3f4f6;color:#4b5563}'
         + '.small{font-size:12px;color:#666}'
-        + 'footer{margin:0 25px 25px;font-size:13px;color:#666}#former-count{color:#cbbfe6;font-weight:normal;font-size:15px}.oc-chip{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-weight:600}.oc-chip i{display:inline-block;width:13px;height:13px;border-radius:50%}#formers td.yr{text-align:right;white-space:nowrap}#formers th.yr{text-align:right}.hist-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:14px;width:max-content;max-width:calc(100vw - 40px);box-sizing:border-box;background:#2e1a5c;color:#fff;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.3);padding:11px 10px 11px 18px;font-size:14px;transition:opacity .4s}.hist-toast b{color:#cbbfe6;font-weight:600}.hist-toast button{background:none;border:0;color:#cbbfe6;font-size:20px;line-height:1;cursor:pointer;padding:0 6px;border-radius:4px}.hist-toast button:hover{background:rgba(255,255,255,.12)}.hist-toast.gone{opacity:0}'
+        + 'footer{margin:0 25px 25px;font-size:13px;color:#666}#former-count{color:#cbbfe6;font-weight:normal;font-size:15px}.oc-chip{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-weight:600}.oc-chip i{display:inline-block;width:13px;height:13px;border-radius:50%}#formers td.yr{text-align:right;white-space:nowrap}#formers th.yr{text-align:right}.hist-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:12px;width:max-content;max-width:calc(100vw - 40px);box-sizing:border-box;background:#fbf3d5;color:#3d2f0e;border:1px solid #d9c48a;border-left:5px solid #b7a57a;border-radius:8px;box-shadow:0 6px 20px rgba(61,47,14,.25);padding:11px 10px 11px 14px;font-size:14px;line-height:1.5;transition:opacity .4s}.hist-toast b{color:#4b2e83;font-weight:700}.hist-toast button{background:none;border:0;color:#85754d;font-size:20px;line-height:1;cursor:pointer;padding:0 6px;border-radius:4px}.hist-toast button:hover{background:rgba(61,47,14,.08)}.hist-toast.gone{opacity:0}.hist-toast .warn{color:#9a3412;font-weight:600}.hist-toast .ic{flex:none;width:16px;height:16px;box-sizing:border-box;border-radius:50%;color:#047857;font-weight:700;font-size:16px;line-height:16px;text-align:center}.hist-toast .ic::before{content:"✓"}.hist-toast.busy .ic{border:2px solid #e6d5a3;border-top-color:#85754d;animation:toast-spin .9s linear infinite}.hist-toast.busy .ic::before{content:""}@keyframes toast-spin{to{transform:rotate(360deg)}}'
         + '</style></head><body>';
 
     /* getStudentList takes a status code per group, -1 leaving the group out. CURRENT is what the Current
@@ -251,7 +383,36 @@ javascript:(function(){
         var QN = { WIN: 0, SPR: 1, SUM: 2, AUT: 3 }, QS = { 1: "Win", 2: "Spr", 3: "Sum", 4: "Aut" };
         var rosterTitle = {}, isCurrent = Object.assign({}, seen, currentKeys);
         roster.forEach(function(r){ rosterTitle[r.SystemKey] = r.DegreeTitle || ""; });
-        var PROGRAM_TITLE = /DOCTOR OF PHILOSOPHY|PRE-?\s?DOCTOR|MASTER OF ARTS/i, NON_DEGREE_TITLE = /CERTIFICATE|^\s*GNM/i;
+        var PROGRAM_TITLE = /DOCTOR OF PHILOSOPHY|PRE-?\s?DOCTOR|MASTER OF/i, NON_DEGREE_TITLE = /CERTIFICATE|^\s*GNM/i;
+        /* The department's own fields, from current students' degree titles: "DOCTOR OF PHILOSOPHY (ANTHROPOLOGY: ARCHAEOLOGY)" is
+           ANTHROPOLOGY. A degree is the program's own when it is in the student's own field or, for a title that names none
+           (PRE-DOCTOR), in one of the department's doctoral fields. Until Oct 2026 only Philosophy degrees counted, so in other
+           departments every MA showed as missing (Ben Marwick, who ran it on Anthropology, MyGradMod issue #1). */
+        function fieldOf(title){ var m = String(title || "").match(/\(\s*([^):]+)/); return m ? m[1].replace(/\s+/g, " ").trim().toUpperCase() : null; }
+        var FIELDS = { doctoral: [], all: [] };
+        roster.map(function(r){ return r.DegreeTitle; }).concat((current || []).map(function(d){ return d.DegreeTitle; })).forEach(function(t){
+            t = String(t || "");
+            var f = fieldOf(t);
+            if(!f || NON_DEGREE_TITLE.test(t) || !/DOCTOR|MASTER/i.test(t)) return;
+            if(FIELDS.all.indexOf(f) === -1) FIELDS.all.push(f);
+            if(/DOCTOR OF PHILOSOPHY/i.test(t) && FIELDS.doctoral.indexOf(f) === -1) FIELDS.doctoral.push(f);
+        });
+        function fieldsFor(title){ var f = fieldOf(title); return f ? [f] : FIELDS.doctoral.length ? FIELDS.doctoral : FIELDS.all; }
+        /* The program's own PhD ("phd") or master's ("ma") in MyGrad's "UW degrees" list, e.g. "Spring, 2024 - MASTER OF ARTS
+           (PHILOSOPHY)": the match, with the quarter and year at [1] and [2], or null. Track variants such as
+           "(ANTHROPOLOGY: BIOLOGICAL)" count; other fields, such as "(MUSEOLOGY)" in Anthropology, don't. */
+        function uwDegree(list, kind, fields){
+            var found = null;
+            String(list || "").split(/<br\s*\/?>/i).forEach(function(line){
+                var m = line.replace(/<[^>]*>/g, "").match(/(win|spr|sum|aut)\w*,?\s+(\d{4})\s*-\s*(DOCTOR OF PHILOSOPHY|MASTER OF [A-Z ]+?)\s*\(\s*([^):]+)/i);
+                if(found || !m || (kind === "phd") !== /^DOCTOR/i.test(m[3])) return;
+                if(fields.indexOf(m[4].replace(/\s+/g, " ").trim().toUpperCase()) !== -1) found = m;
+            });
+            return found;
+        }
+        /* Candidacy on a detail record: MyGrad's HasPhC field, or "Candidacy Granted" among the general exam requests. For current
+           doctoral students the exam requests page itself is also read, after the dashboard opens (loadMilestones). */
+        function candidacyOnRecord(d){ return !!d && (/^(y|yes|true)$/i.test(String(d.HasPhC).trim()) || /candidacy\s+granted/i.test(d.GenExamRequests)); }
         /* Admission quarters read loosely: "AUT", "Aut", "Autumn" or "Fall" are all Autumn. */
         function normQtr(q){ var t = String(q || "").trim().toUpperCase().slice(0, 3); return t === "FAL" ? "AUT" : t; }
         function usableAdmit(d){ return !!d && !!parseInt(d.GradAdmitYr, 10) && QN[normQtr(d.GradAdmitQtr)] !== undefined; }
@@ -284,9 +445,10 @@ javascript:(function(){
                     : inProgram.length ? { idx: inProgram[0].idx, ay: inProgram[0].code >= 3 ? inProgram[0].year : inProgram[0].year - 1, fromLists: true } : null;
                 if(!entry) return;
                 /* Degree evidence on the detail record: MyGrad's request fields miss older degrees, so also read "UW degrees",
-                   e.g. "Spring, 2024 - MASTER OF ARTS (PHILOSOPHY)". Only Philosophy degrees count. */
-                var uwPhd = d ? String(d.UWDegrees).match(/(win|spr|sum|aut)\w*,?\s+(\d{4})\s*-\s*DOCTOR OF PHILOSOPHY\s*\(\s*PHILOSOPHY\s*\)/i) : null;
-                var uwMA = d ? String(d.UWDegrees).match(/(win|spr|sum|aut)\w*,?\s+(\d{4})\s*-\s*MASTER OF ARTS\s*\(\s*PHILOSOPHY\s*\)/i) : null;
+                   e.g. "Spring, 2024 - MASTER OF ARTS (PHILOSOPHY)". Only the program's own degrees count (uwDegree). */
+                var own = fieldsFor(d ? d.DegreeTitle : rs.length ? rs[rs.length - 1].title : "");
+                var uwPhd = d ? uwDegree(d.UWDegrees, "phd", own) : null;
+                var uwMA = d ? uwDegree(d.UWDegrees, "ma", own) : null;
                 var award = d ? (String(d.FinalExamRequests).split(/<br\s*\/?>/i).map(function(l){ return l.replace(/<[^>]*>/g, "").trim(); }).filter(function(l){ return /awarded/i.test(l); })[0]
                     || (uwPhd ? uwPhd[1] + " " + uwPhd[2] + " - PhD (UW degree record)" : undefined)) : undefined;
                 var maLine = d ? (String(d.MastersRequests).split(/<br\s*\/?>/i).filter(function(l){ return /granted|awarded/i.test(l); })[0]
@@ -301,7 +463,7 @@ javascript:(function(){
                 var h = history[entry.ay + "|" + program] || (history[entry.ay + "|" + program] = { ay: entry.ay, program: program, entered: 0, enrolled: 0, phd: 0, maOnly: 0, left: 0,
                     phdCand: 0, leftCand: 0, formers: [], phdYears: [], listedEntered: 0, listedPhd: 0, listedMa: 0, listedLeft: 0 });
                 var name = d ? displayName(d.StudentName, d.StudentPreferredName) : rs[rs.length - 1].name;
-                var cand = !!d && /^(y|yes|true)$/i.test(String(d.HasPhC).trim()), placedByLists = !d || !!entry.fromLists;
+                var cand = candidacyOnRecord(d), placedByLists = !d || !!entry.fromLists;
                 h.entered++;
                 if(!d) h.listedEntered++;   /* no candidacy record: the candidacy lines leave these out */
                 if(award || listPhd){
@@ -335,12 +497,22 @@ javascript:(function(){
             return { cohorts: Object.keys(history).map(function(key){ return history[key]; }), outcomes: outcomes };
         }
         var built = buildHistory({}), cohorts = built.cohorts;
-        var payload = { students: students, cohorts: cohorts, detailLoaded: current !== null, rosterQuarter: listsLabel, generated: new Date().toISOString() };
+        var payload = { students: students, cohorts: cohorts, detailLoaded: current !== null, rosterQuarter: listsLabel, generated: new Date().toISOString(), fields: FIELDS };
         var json = JSON.stringify(payload).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
         w.document.open();
         w.document.write(PAGE_HTML + "<script>(" + dashboard.toString() + ")(" + json + ");<\/script></body></html>");
         w.document.close();
         loadListHistory({ rebuild: buildHistory, before: built.outcomes, admits: admitsFromLists });
+        /* Current doctoral students still working toward the PhD: their exam requests page and transcript are read next. */
+        var targets = [];
+        studentKeys.forEach(function(k, i){
+            var d = detailByKey[k], title = d ? d.DegreeTitle || students[i].degreeTitle : "";
+            if(!d || NON_DEGREE_TITLE.test(title) || /-ETHICS-/.test(d.DegreeCode) || d.Class === "GNM") return;
+            if(!(/doct|ph\.?\s?d/i.test(d.DegLevel) || /DOCTOR|PRE-?\s?DOCTOR/i.test(title))) return;
+            if(/awarded/i.test(d.FinalExamRequests) || uwDegree(d.UWDegrees, "phd", fieldsFor(title))) return;
+            targets.push({ i: i, key: k, name: d.StudentName || students[i].legalName || students[i].name });
+        });
+        loadMilestones(targets);
     }).catch(function(err){
         w.document.body.innerHTML = "<p style='font-family:sans-serif;padding:20px;color:#b91c1c'>Couldn't load the student list from MyGrad (" + err.message + "). Reload the By Quarter page and try again.</p>";
     });
@@ -348,7 +520,7 @@ javascript:(function(){
     function dashboard(data){
         /* Defaults follow the UW Philosophy Graduate Handbook timeline (2026-27): MA by year 2, committee and chair in year 3,
            general exam and reading committee in year 4, five-year funding package; 10- and 6-year limits are Grad School policy. */
-        var defaults = { maBy: 2, advisorBy: 3, docCommBy: 3, phcBy: 4, readingBy: 4, fundingYears: 5, docWarn: 9, mastersWarn: 5, gpaOn: false, gpaMin: 3.0, allYears: false, formerInitials: false };
+        var defaults = { maBy: 2, advisorBy: 3, docCommBy: 3, phcBy: 4, readingBy: 4, need800: 27, max800: 100, fundingYears: 5, docWarn: 9, mastersWarn: 5, gpaOn: false, gpaMin: 3.0, allYears: false, formerInitials: false };
         var settings = Object.assign({}, defaults);
         try { Object.assign(settings, JSON.parse(localStorage.getItem("grad-monitor-settings") || "{}")); } catch(e){}
         var view = { show: "inprogram", program: "all", search: "", sort: "flags", dir: -1, highlight: null, range: null, formerShow: "all", formerSearch: "" };
@@ -401,13 +573,33 @@ javascript:(function(){
         var currentAY = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
         function admitAY(qtr, yr){ var y = parseInt(yr, 10), q = String(qtr || "").trim().toUpperCase().slice(0, 3); if(!y) return null; return q === "AUT" || q === "FAL" || q === "SUM" ? y : y - 1; }
 
-        /* The Philosophy MA / PhD: a granted request in MyGrad, or the degree in MyGrad's "UW degrees" list. Other degrees don't count. */
-        function philMA(d){ return /granted|awarded/i.test(d.MastersRequests) || /MASTER OF ARTS \(PHILOSOPHY\)/i.test(d.UWDegrees); }
+        /* The program's own MA / PhD: a granted request in MyGrad, or the degree in MyGrad's "UW degrees" list, in the student's own
+           field (or, for a Pre-Doctor title, one of the department's doctoral fields; see fieldOf where the data is built).
+           Other degrees, such as a master's in another field, don't count. */
+        var FIELDS = data.fields || { doctoral: [], all: [] };
+        function fieldsFor(s){
+            var m = String((s.d && s.d.DegreeTitle) || s.degreeTitle || "").match(/\(\s*([^):]+)/);
+            return m ? [m[1].replace(/\s+/g, " ").trim().toUpperCase()] : FIELDS.doctoral.length ? FIELDS.doctoral : FIELDS.all;
+        }
+        function uwDegree(s, kind){
+            var fields = fieldsFor(s);
+            return lines(s.d && s.d.UWDegrees).some(function(line){
+                var m = line.match(/(DOCTOR OF PHILOSOPHY|MASTER OF [A-Z ]+?)\s*\(\s*([^):]+)/i);
+                return !!m && (kind === "phd") === /^DOCTOR/i.test(m[1]) && fields.indexOf(m[2].replace(/\s+/g, " ").trim().toUpperCase()) !== -1;
+            });
+        }
+        function maDone(s){ return !!s.d && (/granted|awarded/i.test(s.d.MastersRequests) || uwDegree(s, "ma")); }
         /* MyGrad's yes/no fields: "Yes", "Y" or "true" in any case. */
         function yes(v){ return /^(y|yes|true)$/i.test(String(v || "").trim()); }
         /* An advisor counts if MyGrad lists one, even when its HasAdvisor field says otherwise (it can lag behind the advisor list). */
         function hasAdvisor(d){ return yes(d.HasAdvisor) || lines(d.AdvisorChair).some(function(l){ return /[a-z]/i.test(l) && !/^(none|tbd|n\/?a)$/i.test(l.trim()); }); }
-        function philPhD(d){ return /awarded/i.test(d.FinalExamRequests) || /DOCTOR OF PHILOSOPHY \(PHILOSOPHY\)/i.test(d.UWDegrees); }
+        function phdDone(s){ return !!s.d && (/awarded/i.test(s.d.FinalExamRequests) || uwDegree(s, "phd")); }
+        /* Candidacy: the doctoral exam requests page, read after the dashboard opens (s.ms.cand), or MyGrad's HasPhC field, or
+           "Candidacy Granted" among the general exam requests. Ben Marwick found HasPhC says No for some students whose requests
+           page shows Candidacy Granted (MyGradMod issue #1), so any one of them counts. */
+        function candidate(s){ return !!s.d && ((s.ms && s.ms.cand === true) || yes(s.d.HasPhC) || /candidacy\s+granted/i.test(s.d.GenExamRequests)); }
+        /* Dissertation (800) credits on the transcript, once read (null until then, or if it couldn't be read). */
+        function credits800(s){ return s.ms && typeof s.ms.credits === "number" ? s.ms.credits : null; }
         data.students.forEach(function(s, i){
             s.idx = i;
             var d = s.d;
@@ -422,7 +614,7 @@ javascript:(function(){
             s.year = ay === null ? null : currentAY - ay + 1;
             s.cohort = ay;
             s.nonDegree = s.level === "Certificate" || s.level === "Non-matriculated";
-            s.done = !!d && philPhD(d);
+            s.done = !!d && phdDone(s);
         });
 
         function flagsFor(s){
@@ -435,7 +627,13 @@ javascript:(function(){
             if(stage === 0 && y > settings.maBy) f.push(["amber", "Still in MA phase"]);
             if(stage === 1 && y > settings.docCommBy) f.push(["amber", "No doctoral committee"]);
             if(stage === 2 && y > settings.phcBy) f.push(["amber", "Not yet a candidate"]);
-            if(stage === 3 && !yes(d.HasReadingComm) && y > settings.readingBy) f.push(["amber", "No reading committee"]);
+            if(stage >= 3 && !yes(d.HasReadingComm) && y > settings.readingBy) f.push(["amber", "No reading committee"]);
+            /* Dissertation credits (after Ben Marwick): a candidate with none is probably still registering for 600 credits, and
+               well past the requirement suggests a student adrift and accumulating debt. A new candidate isn't flagged until a
+               quarter after their exam. */
+            var n800 = credits800(s), sinceExam = s.ms && s.ms.candDate ? (Date.now() - new Date(s.ms.candDate).getTime()) / 864e5 : null;
+            if(stage >= 3 && n800 === 0 && (sinceExam === null || sinceExam > 100)) f.push(["amber", "No 800 credits as a candidate", "A candidate with no dissertation (800) credits on the transcript: probably still registering for 600 credits"]);
+            if(n800 !== null && n800 > settings.max800) f.push(["amber", "Over " + settings.max800 + " credits of 800", n800 + " dissertation (800) credits on the transcript; the Grad School requires " + settings.need800 + ". Check progress, supervision and tuition costs."]);
             if(s.level === "Doctoral" && y >= settings.docWarn) f.push(["red", "Year " + y + " of 10-year limit"]);
             if(s.level === "Master's" && y >= settings.mastersWarn) f.push(["red", "Year " + y + " of 6-year limit"]);
             if(settings.gpaOn && d.GPA !== "" && Number(d.GPA) < settings.gpaMin) f.push(["amber", "GPA below " + settings.gpaMin]);
@@ -448,12 +646,46 @@ javascript:(function(){
             if(s.level === "Certificate") return "<span class='small'>Certificate student: degree milestones are tracked by their home program</span>";
             if(s.level === "Non-matriculated") return "<span class='small'>Non-matriculated student: no degree milestones</span>";
             var yn =function(v, label){ return chip(yes(v) ? "yes" : "no", (yes(v) ? "✓ " : "✗ ") + label); };
-            var out = yn(hasAdvisor(d) ? "Yes" : "No", "Advisor") + yn(philMA(d) ? "Yes" : "No", "MA");
-            if(s.level === "Doctoral") out += yn(d.HasDocComm, "Doc. committee") + yn(d.HasPhC, "Candidacy") + yn(d.HasReadingComm, "Reading committee");
+            var out = yn(hasAdvisor(d) ? "Yes" : "No", "Advisor") + chip(maDone(s) ? "yes" : "no", (maDone(s) ? "✓ " : "✗ ") + "MA", maTip(s));
+            if(s.level === "Doctoral") out += yn(d.HasDocComm, "Doc. committee") + candidacyChip(s) + yn(d.HasReadingComm, "Reading committee") + creditsChip(s);
             else out += yn(d.HasMastersComm, "Master's committee");
             var req = [["Master's", d.MastersRequests], ["General exam", d.GenExamRequests], ["Final exam", d.FinalExamRequests]];
             req.forEach(function(r){ lines(r[1]).forEach(function(l){ out += "<div class='small'>" + esc(r[0] + ": " + l) + "</div>"; }); });
             return out;
+        }
+
+        function maTip(s){
+            var d = s.d, why = [];
+            if(/granted|awarded/i.test(d.MastersRequests)) why.push("A master’s request is granted");
+            if(uwDegree(s, "ma")) why.push("MyGrad’s UW degrees list has the master’s in " + fieldsFor(s).join(" or ").toLowerCase());
+            return why.length ? why.join(". ") + "." : "No granted master’s request, and no master’s in " + fieldsFor(s).join(" or ").toLowerCase() + " in MyGrad’s UW degrees list.";
+        }
+        function candidacyChip(s){
+            var d = s.d, m = s.ms || {}, c = candidate(s), why = [];
+            if(m.cand === true) why.push("Candidacy Granted on the doctoral exam requests page" + (m.candDate ? " (exam " + m.candDate + ")" : ""));
+            else if(m.cand === false) why.push("No Candidacy Granted on the doctoral exam requests page");
+            else if(m.candError) why.push("Couldn’t read the doctoral exam requests page: " + m.candError);
+            else if(ms.pending) why.push("Checking the doctoral exam requests page…");
+            else if(ms.org === false) why.push("The doctoral exam requests page wasn’t read: MyGrad’s org number for the department isn’t on this MyGrad page");
+            why.push("MyGrad’s candidacy field (HasPhC) says " + (yes(d.HasPhC) ? "Yes" : "No"));
+            if(/candidacy\s+granted/i.test(d.GenExamRequests)) why.push("The general exam requests say Candidacy Granted");
+            return chip(c ? "yes" : "no", (c ? "✓ " : "✗ ") + "Candidacy", why.join(". ") + ".");
+        }
+        /* Dissertation (800) credits against the Grad School's minimum: 27, over at least three quarters, at least one of them
+           after the general exam (Policy 1.1). */
+        function creditsChip(s){
+            var m = s.ms || {}, n = credits800(s), need = settings.need800, cand = candidate(s);
+            /* Shown for candidates, and for anyone who already has some 800 credits. */
+            if(n === null) return !cand ? "" : m.trError ? chip("gray", "800 credits ?", "Couldn’t read the transcript: " + m.trError) : ms.pending ? chip("gray", "800 credits …", "Reading the transcript…") : "";
+            if(!cand && !n) return "";
+            var tip = n + " dissertation (800) credits on the transcript";
+            if(m.quarters) tip += ", in " + m.quarters + (m.quarters === 1 ? " quarter" : " quarters") + " (" + m.first + (m.last !== m.first ? " to " + m.last : "") + ")";
+            if(m.qIdx && m.candDate){
+                var dt = m.candDate.split("/"), mo = +dt[0], examQ = +dt[2] * 4 + (mo <= 3 ? 0 : mo <= 6 ? 1 : mo <= 8 ? 2 : 3), after = m.qIdx.filter(function(q){ return q > examQ; }).length;
+                tip += "; " + after + " of those quarters after the general exam (" + m.candDate + ")";
+            }
+            tip += ". The Grad School requires " + need + ", over at least three quarters, with at least one after the general exam.";
+            return chip(n >= need ? "yes" : "info", (n >= need ? "✓ " : "") + "800 credits: " + n + (n >= need ? "" : " of " + need), tip);
         }
 
         function notes(s){
@@ -477,18 +709,20 @@ javascript:(function(){
             return out || "<span class='small'>None listed</span>";
         }
 
-        /* Stage flow for enrolled PhD-track students: 0 pre-MA, 1 MA done, 2 doctoral committee, 3 candidate.
+        /* Stage flow for enrolled PhD-track students: 0 pre-MA, 1 MA done, 2 doctoral committee, 3 candidate, 4 candidate with the
+           required dissertation (800) credits (a stage Ben Marwick suggested; known once transcripts are read).
            null = outside the flow (no MyGrad details, finished, certificate, or no admission date). Used by the stage
            cells, the dot strips and the connector cells so they always agree. */
-        var STAGE_SHORT = ["pre-MA", "MA done", "committee", "candidate"];
-        var STAGE_LONG = ["pre-MA", "MA done, no doctoral committee yet", "doctoral committee, not yet a candidate", "candidate"];
+        var STAGE_SHORT = ["pre-MA", "MA done", "committee", "candidate", "800s met"];
+        var STAGE_LONG = ["pre-MA", "MA done, no doctoral committee yet", "doctoral committee, not yet a candidate", "candidate", "candidate with the dissertation (800) credits"];
         function stageOf(s){
             if(!s.d || s.done || s.nonDegree || s.cohort === null) return null;
             /* New students are admitted under the PhD degree code, so the code says nothing about the MA:
-               "MA done" needs the Philosophy MA itself (philMA). */
-            return yes(s.d.HasPhC) ? 3 : yes(s.d.HasDocComm) ? 2 : philMA(s.d) ? 1 : 0;
+               "MA done" needs the program's own MA itself (maDone). */
+            if(candidate(s)) return credits800(s) !== null && credits800(s) >= settings.need800 ? 4 : 3;
+            return yes(s.d.HasDocComm) ? 2 : maDone(s) ? 1 : 0;
         }
-        function moveOnBy(i){ return [settings.maBy, settings.docCommBy, settings.phcBy, null][i]; }
+        function moveOnBy(i){ return [settings.maBy, settings.docCommBy, settings.phcBy, null, null][i]; }
         function isStalled(s){ var i = stageOf(s); return i !== null && moveOnBy(i) !== null && s.year > moveOnBy(i); }
         var STALLED_DOT = "rgba(217,119,6,0.85)", ON_DOT = "rgba(75,46,131,0.72)";
         var OUTCOME = { left: { ring: "#b4b8bf", text: "#6b7280", label: "left, no degree" }, ma: { ring: "#c49a2c", text: "#8a6512", label: "left with MA" }, phd: { ring: "#047857", text: "#047857", label: "PhD awarded" } };
@@ -498,7 +732,7 @@ javascript:(function(){
             var i = stageOf(s);
             if(i === null) return "<span class='small' title='" + esc(!s.d ? "No MyGrad details" : s.done ? "Degree finished" : s.level === "Non-matriculated" ? "Non-matriculated student" : s.level === "Certificate" ? "Certificate student: milestones tracked by their home program" : "No admission date in MyGrad") + "'>—</span>";
             var st = isStalled(s);
-            var boxes = [0, 1, 2, 3].map(function(k){ return "<b" + (k === i ? " style='background:" + (st ? STALLED_DOT : ON_DOT) + ";box-shadow:none'" : "") + "></b>"; }).join("");
+            var boxes = [0, 1, 2, 3, 4].map(function(k){ return "<b" + (k === i ? " style='background:" + (st ? STALLED_DOT : ON_DOT) + ";box-shadow:none'" : "") + "></b>"; }).join("");
             return "<span class='conn" + (lit ? " lit" : "") + "' data-student='" + s.idx + "' role='button' tabindex='0' title='Click to single out this student in Entering classes'>" + boxes
                 + "<span class='cn'>" + STAGE_SHORT[i] + (st ? " · stalled" : "") + "</span></span>";
         }
@@ -681,7 +915,7 @@ javascript:(function(){
                 var year = currentAY - c.ay + 1;
                 var members = roster().filter(function(s){ return s.cohort === c.ay && !s.nonDegree; });
                 var enrolled = members.filter(function(s){ return stageOf(s) !== null; });
-                var stages = [0, 0, 0, 0];
+                var stages = [0, 0, 0, 0, 0];
                 enrolled.forEach(function(s){ stages[stageOf(s)]++; });
                 enrolledNow += enrolled.length;
                 phdYears = phdYears.concat(c.phdYears || []);
@@ -709,17 +943,18 @@ javascript:(function(){
                 return "<span class='ohd'>" + (key ? "<i class='sdot gone' style='box-shadow:inset 0 0 0 2px " + OUTCOME[key].ring + "'></i>" : "") + "<span>" + label + "</span>" + (arrow ? "<span>→</span>" : "") + "</span>";
             };
             var head = "<th class='fit'>Entering<br>class</th><th class='nc snug'>Year</th><th class='blk oh nc'>" + outcomeHead(null, "Pre-MA", true) + "</th><th class='oh nc'>" + outcomeHead(null, "MA<br>done", true) + "</th>"
-                + "<th class='oh nc'>" + outcomeHead(null, "Committee", true) + "</th><th class='oh nc'>" + outcomeHead(null, "Candidate") + "</th>"
+                + "<th class='oh nc'>" + outcomeHead(null, "Committee", true) + "</th><th class='oh nc'>" + outcomeHead(null, "Candidate", true) + "</th>"
+                + "<th class='oh nc' title='Candidates with at least " + settings.need800 + " dissertation (800) credits on their transcript (Grad School Policy 1.1)'>" + outcomeHead(null, "800s<br>met") + "</th>"
                 + "<th class='blk' style='text-align:left' title='Students from this class enrolled now, of those who entered: one dot per student'>Total</th><th class='blk nc tight snug'>Flagged</th><th class='spc'></th>"
                 + "<th class='oh nc'>" + outcomeHead("left", "Left,<br>no degree", true) + "</th><th class='oh nc'>" + outcomeHead("ma", "Left<br>with MA", true) + "</th>"
                 + "<th class='phdpair oh nc'>" + outcomeHead("phd", "PhD<br>awarded") + "</th>";
-            document.getElementById("cohorts").innerHTML = "<thead><tr><th class='grp'></th><th class='grp'></th><th class='grp blk now' colspan='6'>Currently enrolled</th><th class='grp spc'></th><th class='grp gone' colspan='5'>No longer enrolled</th></tr>"
+            document.getElementById("cohorts").innerHTML = "<thead><tr><th class='grp'></th><th class='grp'></th><th class='grp blk now' colspan='7'>Currently enrolled</th><th class='grp spc'></th><th class='grp gone' colspan='5'>No longer enrolled</th></tr>"
                 + "<tr>" + head.replace(/<th /g, "<th rowspan='2' ") + "<th class='phdpair yrs' colspan='2' title='For the PhDs awarded in this class. National median for philosophy: 6.8–7.0 years (NSF Survey of Earned Doctorates, 2024–25)'>Years<br>to PhD</th></tr>"
                 + "<tr><th class='phdpair yrs-sub'>Mean</th><th class='phdpair yrs-sub'>Median</th></tr></thead><tbody>"
-                + (body.join("") || "<tr><td colspan='14' class='small'>" + (!data.cohorts.length ? "No admission dates in MyGrad's records."
+                + (body.join("") || "<tr><td colspan='15' class='small'>" + (!data.cohorts.length ? "No admission dates in MyGrad's records."
                     : !cohorts().length ? "No entering classes on record for this program. Certificate and non-matriculated students aren't counted in entering classes."
                     : "No entering classes " + (view.program === "all" ? "" : "in this program ") + "in the years selected.") + "</td></tr>") + "</tbody>"
-                + (body.length ? "<tfoot><tr><td></td><td></td><td class='blk'></td><td></td><td></td><td></td>"
+                + (body.length ? "<tfoot><tr><td></td><td></td><td class='blk'></td><td></td><td></td><td></td><td></td>"
                     + "<td class='blk strip-cell sum' title='Enrolled now, in the classes shown (the filled dots)'><div class='stripwrap'><span class='striptext'><strong class='stnum'>" + enrolledNow + "</strong><span class='small stof'>in program</span></span></div></td>"
                     + "<td class='blk'></td><td class='spc'></td>"
                     + "<td class='sum-med' title='Left with no degree, in the classes shown'><strong>" + leftCount + "</strong></td><td class='sum-med' title='Left with an MA, in the classes shown'><strong>" + maCount + "</strong></td>"
@@ -731,11 +966,11 @@ javascript:(function(){
                     + "</tr>" + (function(){
                         var t = outcomeStats(shown), x = exited(t), parts = outcomeParts(t);
                         document.getElementById("cohort-outcomes").innerHTML = parts.length ? "<strong>Cohorts shown:</strong> " + parts.join("<span class='sep'>·</span>") : "";
-                        return "<tr class='rates'><td></td><td></td><td class='blk'></td><td></td><td></td><td></td><td class='blk'></td><td class='blk'></td><td class='spc'></td>"
+                        return "<tr class='rates'><td></td><td></td><td class='blk'></td><td></td><td></td><td></td><td></td><td class='blk'></td><td class='blk'></td><td class='spc'></td>"
                             + "<td class='rate' title='Shares of the " + x + " no longer enrolled; the three add to 100%'>" + exitShares(t).left + "</td><td class='rate' title='Shares of the " + x + " no longer enrolled; the three add to 100%'>" + exitShares(t).ma + "</td>"
                             + "<td class='phdpair rate' title='" + esc(t.enrolled ? PARTIAL_HOVER : "Share of the " + x + " no longer enrolled") + "'>" + phdShare(t) + "</td><td class='phdpair'></td><td class='phdpair'></td></tr>"
                             /* The note behind the asterisk sits under the No longer enrolled block, beside the starred share. */
-                            + (t.enrolled ? "<tr class='star'><td colspan='9'></td><td colspan='5' title='" + esc(PARTIAL_HOVER) + "'>" + partialNote(t) + "</td></tr>" : "");
+                            + (t.enrolled ? "<tr class='star'><td colspan='10'></td><td colspan='5' title='" + esc(PARTIAL_HOVER) + "'>" + partialNote(t) + "</td></tr>" : "");
                     })() + "</tfoot>" : "");
         }
 
@@ -882,7 +1117,7 @@ javascript:(function(){
                 var status = esc(s.overall) + "<div class='small'>" + esc(s.quarter) + (s.credits !== "" && s.credits !== null && s.credits !== undefined ? " · " + esc(s.credits) + " cr" : "") + "</div>";
                 var admitted = s.admitFromLists ? "<div class='small' title='No admission quarter on MyGrad’s record: the class is from their first quarter in the program on MyGrad’s lists'>since " + esc(s.admitFromLists) + " (MyGrad’s lists)</div>"
                     : d && d.GradAdmitYr ? "<div class='small'>since " + esc(d.GradAdmitQtr + " " + d.GradAdmitYr) + "</div>" : "";
-                var flags = flagsFor(s).map(function(f){ return chip(f[0], f[1]); }).join("") + notes(s);
+                var flags = flagsFor(s).map(function(f){ return chip(f[0], f[1], f[2]); }).join("") + notes(s);
                 var lit = !!(fc && fc(s));
                 return "<tr class='" + (d ? "" : "limited") + (hl && hl(s) ? " hl" + (fc && !lit ? " soft" : "") : "") + (lit ? " focus" : "") + "'>" + (lead || "") + "<td class='nm'" + (s.admitFromLists ? " title='Class from MyGrad’s lists: first in the program " + esc(s.admitFromLists) + " (no admission quarter on record)'" : "") + ">" + name + "</td><td>" + connector(s, lit) + "</td><td>" + esc(s.level) + "<div class='small'>" + esc(s.program) + "</div></td>"
                     + (grouped ? "" : "<td>" + (s.year === null ? "—" : s.year) + admitted + "</td>") + "<td>" + status + "</td><td>" + (d ? lines(d.AdvisorChair).map(esc).join("<br>") || "—" : "") + "</td><td>" + milestones(s)
@@ -927,6 +1162,8 @@ javascript:(function(){
             + "<label>No doctoral committee after year <input type='number' min='1' max='10' id='docCommBy'></label>"
             + "<label>Not a candidate after year <input type='number' min='1' max='10' id='phcBy'></label>"
             + "<label>No reading committee after year <input type='number' min='1' max='10' id='readingBy'></label>"
+            + "<label title='Grad School Policy 1.1: at least 27 credits of 800, over at least three quarters'>Dissertation (800) credits required <input type='number' min='1' max='60' id='need800'></label>"
+            + "<label title='Ben Marwick’s suggestion: well past the requirement, a student may be adrift and accumulating debt'>Flag 800 credits over <input type='number' min='1' max='300' id='max800'></label>"
             + "<label>Guaranteed funding covers years 1 to <input type='number' min='1' max='10' id='fundingYears'></label>"
             + "<label>Doctoral time-limit warning from year <input type='number' min='1' max='10' id='docWarn'></label>"
             + "<label>Master's time-limit warning from year <input type='number' min='1' max='6' id='mastersWarn'></label>"
@@ -942,7 +1179,7 @@ javascript:(function(){
             + "<table id='cohorts'></table><p id='cohort-outcomes' class='outcomes'></p>"
             + "</div></div>"
             + "<div class='panel' id='panel-students'><h2 class='dark-head'><button type='button' class='panel-toggle' data-panel='students' aria-expanded='true' aria-controls='body-students' title='Collapse or expand this section'><span class='chev'>▼</span>Students</button>"
-            + "<span class='seg' id='show-seg' role='group' aria-label='Which students'></span><span class='bar-fill'></span>"
+            + "<span class='seg' id='show-seg' role='group' aria-label='Which students'></span><span id='ms-status' class='small'></span><span class='bar-fill'></span>"
             + "<input type='search' id='search' placeholder='Search name or advisor'>"
             + "<label class='bar-opt'><input type='checkbox' id='group-by-class'> By cohort</label></h2>"
             + "<div class='panel-body' id='body-students'><div id='hl-note' class='hl-line small'></div><table id='roster'></table></div></div>"
@@ -969,7 +1206,7 @@ javascript:(function(){
         }
         fillPrograms();
 
-        ["maBy", "advisorBy", "docCommBy", "phcBy", "readingBy", "fundingYears", "docWarn", "mastersWarn", "gpaMin"].forEach(function(k){
+        ["maBy", "advisorBy", "docCommBy", "phcBy", "readingBy", "need800", "max800", "fundingYears", "docWarn", "mastersWarn", "gpaMin"].forEach(function(k){
             var el = document.getElementById(k);
             el.value = settings[k];
             el.addEventListener("change", function(){ var v = parseFloat(el.value); if(!isNaN(v)){ settings[k] = v; save(); render(); } });
@@ -1004,25 +1241,61 @@ javascript:(function(){
         /* The full history arrives from the MyGrad tab after the dashboard opens (loadListHistory): progress by year, then
            former students found only on MyGrad's quarter lists, added to their entering classes. */
         /* A toast while the history loads, so nobody wonders why Entering classes changes a minute later; × hides it. */
-        var histToast = null;
-        function toast(html, fade){
+        var histToast = null, toastParts = { hist: "", ms: "" }, toastBusy = { hist: true, ms: true };
+        function toast(html, fade, part){
             if(histToast === false) return;
+            part = part || "hist";
+            toastParts[part] = html;
+            toastBusy[part] = !fade;
+            html = ["hist", "ms"].map(function(k){ return toastParts[k]; }).filter(Boolean).join("<br>");
+            fade = !toastBusy.hist && !toastBusy.ms ? fade || 6000 : 0;
             if(histToast === null){
                 histToast = document.createElement("div");
                 histToast.className = "hist-toast";
                 histToast.setAttribute("role", "status");
-                histToast.innerHTML = "<span class='t'></span><button type='button' aria-label='Hide'>×</button>";
+                histToast.innerHTML = "<span class='ic' aria-hidden='true'></span><span class='t'></span><button type='button' aria-label='Hide'>×</button>";
                 histToast.querySelector("button").addEventListener("click", function(){ histToast.remove(); histToast = false; });
                 document.body.appendChild(histToast);
             }
             histToast.querySelector(".t").innerHTML = html;
+            /* A spinner while either reading is still going, a check once both are done. */
+            histToast.classList.toggle("busy", toastBusy.hist || toastBusy.ms);
             if(fade) setTimeout(function(){ if(histToast){ histToast.classList.add("gone"); setTimeout(function(){ if(histToast) histToast.remove(); }, 450); } }, fade);
         }
         var historyPending = true;
+        /* Candidacy and 800 credits arrive from the MyGrad tab after the dashboard opens (loadMilestones): progress, then the
+           counts for each current doctoral student, by their place in data.students. */
+        var ms = { pending: true, org: null };
+        window.mygradmodMilestones = function(msg){
+            var el = document.getElementById("ms-status");
+            if(msg.progress){
+                var p = msg.progress;
+                if(!p.total){ toast("", 1, "ms"); return; }
+                var text = "Reading doctoral students’ transcripts (<b>" + p.transcripts + "</b> of " + p.total + ")"
+                    + (p.requests === null ? "" : " and exam requests (<b>" + p.requests + "</b> of " + p.total + ")") + " for candidacy and 800 credits." + (toastBusy.hist ? "" : " Keep the MyGrad tab open.");
+                toast(text, 0, "ms");
+                el.textContent = "· Reading transcripts" + (p.requests === null ? "" : " and exam requests") + "…";
+                return;
+            }
+            Object.keys(msg.results || {}).forEach(function(i){ if(data.students[i]) data.students[i].ms = msg.results[i]; });
+            ms.pending = false;
+            ms.org = msg.org;
+            var all = Object.keys(msg.results || {}).map(function(i){ return msg.results[i]; });
+            var trFail = all.filter(function(r){ return r.trError; }).length, rqFail = all.filter(function(r){ return r.candError; }).length;
+            var read = msg.total - trFail;
+            var problems = (msg.signedOut ? "MyGrad signed you out partway, so some weren’t read. Sign in again and reopen MyGradMod. " : "")
+                + (trFail ? trFail + (trFail === 1 ? " transcript" : " transcripts") + " couldn’t be read. " : "") + (rqFail ? rqFail + " exam requests " + (rqFail === 1 ? "page" : "pages") + " couldn’t be read. " : "")
+                + (msg.org ? "" : "The doctoral exam requests pages weren’t read: MyGrad’s org number for the department isn’t on this MyGrad page, so candidacy comes from MyGrad’s records only. ");
+            el.textContent = msg.total ? "· " + (msg.signedOut || trFail || rqFail ? "Some transcripts or exam requests unread" : "800 credits and candidacy read") : "";
+            el.title = msg.total ? "Read from each current doctoral student’s transcript" + (msg.org ? " and doctoral exam requests page" : "") + ": " + read + " of " + msg.total + " transcripts. " + problems
+                + "Hover a student’s Candidacy and 800 credits for where each comes from." : "";
+            toast(msg.total ? (problems ? "<span class='warn'>" + esc(problems.trim()) + "</span>" : "Candidacy and 800 credits read for <b>" + msg.total + "</b> doctoral " + (msg.total === 1 ? "student" : "students") + ".") : "", 8000, "ms");
+            render();
+        };
         window.mygradmodHistory = function(msg){
             var el = document.getElementById("hist-status");
             if(msg.progress){
-                toast("Adding the program’s full history from MyGrad’s quarter lists: about a minute. Keep the MyGrad tab open. <b>" + msg.progress + "</b>");
+                toast("Adding the program’s full history from MyGrad’s quarter lists: about a minute. Keep the MyGrad tab open. <b>" + msg.progress + "</b>", 0, "hist");
                 el.textContent = "· Adding history from MyGrad’s quarter lists… " + msg.progress;
                 el.title = "Reading every quarter’s list back to the program’s first: about a minute. Keep the MyGrad tab open until it finishes.";
                 return;
@@ -1042,7 +1315,7 @@ javascript:(function(){
             el.textContent = msg.found ? "· " + msg.found + " more from MyGrad’s quarter lists" : msg.reread || msg.placed ? "· " + (msg.reread + msg.placed) + " updated from MyGrad’s quarter lists" : "";
             var extras = [msg.reread ? "<b>" + msg.reread + "</b> updated" : "", msg.placed ? "<b>" + msg.placed + "</b> current student" + (msg.placed === 1 ? "" : "s") + " placed in their class" : ""].filter(Boolean);
             toast((msg.found ? "Full history added: <b>" + msg.found + "</b> more former students in Entering classes" : "Full history checked: no more former students found")
-                + (extras.length ? ", and " + extras.join(" and ") + "." : "."), 6000);
+                + (extras.length ? ", and " + extras.join(" and ") + "." : "."), 6000, "hist");
             el.title = msg.found || msg.reread || msg.placed ? (msg.found ? msg.found + " former students were found only through MyGrad’s quarter lists (which go back to " + msg.oldest + ")" : "No more former students were found")
                 + (msg.reread ? ", and the lists changed the outcome of " + msg.reread + " already counted (for example, a PhD their detail record didn’t show)" : "")
                 + (msg.placed ? "; " + msg.placed + " current student" + (msg.placed === 1 ? " has" : "s have") + " no admission quarter on record and joined the class of their first quarter on the lists" : "")

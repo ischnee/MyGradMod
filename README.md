@@ -31,6 +31,10 @@ The script does not collect or use any information about the student outside of 
   - Nothing is sent anywhere.
   - Nothing is stored except your display settings: flag thresholds, the classes the slider selects, and which sections are collapsed. These are kept in your browser.
 - **It takes only the fields it needs.** It never uses ethnicity, gender, visa status, residency, addresses, emails, NetIDs, student numbers, GRE scores or previous institutions.
+- **For current doctoral students, it also reads two of their MyGrad pages: the transcript and the doctoral exam requests page.** It keeps only:
+  - the number of dissertation (800) credits, and which quarters they fall in
+  - whether candidacy was granted, and the exam date
+  - No courses, course titles, grades or committee members reach the dashboard.
 - **Former students appear as class totals, and by name only where you look for them.** A former student's name shows in two places:
   - when you hover their dot in Entering classes
   - in the Former students panel, which starts closed every time
@@ -89,12 +93,16 @@ This short script loads the latest version of MyGradMod from this repository eac
   - Funding this quarter, and others available to TA.
   - Outcomes for the latest 10 cohorts: the share who earned the PhD and average years to PhD.
 - **Entering classes:** a slider chooses which cohorts to show. For each cohort, the table shows:
-  - where its current students are: pre-MA, MA done, committee or candidate, colored by whether they're on schedule
+  - where its current students are: pre-MA, MA done, committee, candidate, or "800s met" (a candidate with the 27 dissertation credits the Grad School requires), colored by whether they're on schedule
   - one dot per student who entered: filled if enrolled, a ring colored by outcome if they have left
   - how many are flagged
   - how many left with no degree, left with an MA, or earned the PhD
   - mean and median years to PhD
 - **Students:** grouped by cohort, with each student's stage, program, status, advisor, milestones, funding and flags.
+  - **Candidacy** counts if the student's doctoral exam requests page shows "Candidacy Granted", or if MyGrad's candidacy field says so.
+  - **800 credits** shows a candidate's dissertation credits against the 27 required.
+  - Two new flags: a candidate with no 800 credits (probably still registering for 600), and more than 100 credits of 800. Both thresholds are in Settings.
+  - Hover a milestone to see where it comes from.
   - Views: In the program, Flagged, All.
   - Search by name or advisor.
   - Clicking a cohort, stage cell or dot highlights those students across the page.
@@ -109,6 +117,7 @@ Hovering explains most numbers in place, e.g. why a cell is marked "stalled".
 ## Cautions
 
 - **Philosophy-specific defaults.** Flag thresholds follow the 2026–27 Philosophy Graduate Handbook: MA by the end of year 2, doctoral committee by year 3, candidacy by year 4, reading committee by year 4, and the Graduate School's 10-year doctoral and 6-year master's limits. Change them under Settings. Year in program counts from the admission quarter and doesn't subtract leave.
+  - **Other departments:** degrees are matched to the department's own field from its degree titles, so it should work beyond Philosophy. For example, "MASTER OF ARTS (ANTHROPOLOGY: BIOLOGICAL)" counts in Anthropology, but a master's in another field doesn't.
 - **MyGrad's own data has quirks.** Some students' details come only from older or inactive records, which can be out of date.
   - Examples: a speaking requirement still listed as "Required", or an advisor yes/no field that lags behind the advisor list.
   - The dashboard reads these fields loosely, and hover text shows MyGrad's own value.
@@ -118,6 +127,13 @@ Hovering explains most numbers in place, e.g. why a cell is marked "stalled".
 - **The full history takes about a minute.** MyGrad's detail records miss many former students. So once the dashboard is open, MyGradMod also reads every past quarter's list, back to about 1990, and adds the former students found only there. Keep the MyGrad tab open until the Entering classes bar says it's done.
   - **Outcomes:** a PhD is read from a last list entry of "Graduated" with the Doctor of Philosophy title. The lists don't record master's degrees, so the others count as "left, no degree".
   - **Candidacy:** the candidacy lines count only students with MyGrad detail records.
+- **Transcripts and exam requests take another half minute or so.** They're read in the background too, and a toast shows the progress. The Students bar says when they're done, and its hover lists any pages that couldn't be read.
+  - **Exam requests pages are read one at a time,** because MyGrad keeps the student being viewed in its session.
+  - **The org number:** these pages need the department's MyGrad org number, which MyGradMod finds on the By Quarter page. If it can't find it, candidacy comes from MyGrad's records alone, and the hover says so.
+
+## Credit
+
+Reading candidacy from the doctoral exam requests page, and 800 credits from the transcript, follows [Ben Marwick](https://github.com/benmarwick)'s table-audit bookmarklet in [uw-anthro-web-helpers](https://github.com/benmarwick/uw-anthro-web-helpers). He suggested both, and the department-field fix, in [issue #1](https://github.com/ischnee/MyGradMod/issues/1).
 
 ## Screenshots (made-up students)
 
