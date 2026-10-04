@@ -174,6 +174,8 @@ javascript:(function(){
             return fetch(url, { credentials: "include" }).then(function(r){
                 return r.text().then(function(html){
                     if(SIGNED_OUT.test(html)) return { signedOut: true };
+                    /* MyGrad's error page notifies the Graduate School, so it is never retried (see loadMilestones). */
+                    if(/\/error\.aspx$/i.test(new URL(r.url).pathname)) return { error: "MyGrad’s error page", mygradError: true };
                     if(!r.ok) throw new Error("HTTP " + r.status);
                     var doc = new DOMParser().parseFromString(html, "text/html");
                     doc.querySelectorAll("script, style, noscript").forEach(function(x){ x.remove(); });
@@ -244,8 +246,14 @@ javascript:(function(){
         granted.sort(function(a, b){ return b.t - a.t; });
         return { cand: granted.length > 0, date: granted.length ? granted[0].date : null };
     }
+    /* If MyGrad answers the exam requests page with its error page (as it did for Philosophy in Oct 2026, with the org number
+       found in the page's links), reading stops at once and isn't tried again in this browser for a week: MyGrad's error page
+       says it notifies the Graduate School, so 20-odd failures per open would each send a report. */
+    var REQUESTS_OFF = "mygradmod-exam-requests-off";
+    function requestsOff(org){ try { var v = JSON.parse(localStorage.getItem(REQUESTS_OFF) || "null"); return !!v && v.org === org && Date.now() - v.at < 7 * 864e5; } catch(e){ return false; } }
     function loadMilestones(targets){
-        var org = findOrg(), results = {}, stop = false, trDone = 0, rqDone = 0, queue = targets.slice();
+        var org = findOrg(), results = {}, stop = false, trDone = 0, rqDone = 0, queue = targets.slice(), mygradError = false;
+        if(org && requestsOff(org)){ mygradError = true; org = null; }
         var tell = function(msg){ try { if(!w.closed && w.mygradmodMilestones) w.mygradmodMilestones(msg); } catch(e){} };
         var progress = function(){ tell({ progress: { transcripts: trDone, requests: org ? rqDone : null, total: targets.length } }); };
         var record = function(i){ return results[i] || (results[i] = {}); };
@@ -263,17 +271,18 @@ javascript:(function(){
         var transcripts = Promise.all([worker(), worker(), worker()]);
         var requests = !org ? Promise.resolve() : targets.reduce(function(p, t){
             return p.then(function(){
-                if(stop || w.closed) return;
+                if(stop || mygradError || w.closed) return;
                 var url = location.origin + "/mgp-dept/stu/request/threshold.aspx?id=" + encodeURIComponent(t.key) + "&ORG=" + org + "&REDIRECT=../list_student_requests.aspx?id=" + encodeURIComponent(t.key);
                 return readPage(url, /Doctoral Exam Requests:\s*([^|]{1,60}?)\s*\|/i, t.name, 4).then(function(r){
                     if(r.signedOut){ stop = true; return; }
+                    if(r.mygradError){ mygradError = true; try { localStorage.setItem(REQUESTS_OFF, JSON.stringify({ org: findOrg(), at: Date.now() })); } catch(e){} return; }
                     if(r.error) record(t.i).candError = r.error; else { var c = readCandidacy(r.doc); record(t.i).cand = c.cand; record(t.i).candDate = c.date; }
                     rqDone++;
                     progress();
                 });
             });
         }, Promise.resolve());
-        Promise.all([transcripts, requests]).then(function(){ tell({ done: true, results: results, signedOut: stop, org: !!org, total: targets.length }); });
+        Promise.all([transcripts, requests]).then(function(){ tell({ done: true, results: results, signedOut: stop, org: !!org, mygradError: mygradError, total: targets.length }); });
     }
     function rowsOf(d){
         if(Array.isArray(d)) return d;
@@ -297,7 +306,7 @@ javascript:(function(){
         + '.pill{border:1px solid #4b2e83;background:#fff;color:#4b2e83;border-radius:14px;padding:3px 12px;font-size:13px;font-weight:600;cursor:pointer}.pill.on{background:#4b2e83;color:#fff}'
         + ''
         + ''
-        + '#cohorts .blk{border-left:2px solid #e8e3f3}#cohorts td.st-none{color:#c9c9c9}#cohorts td.st-on{color:#2e1a5c;font-weight:600}#cohorts tbody tr td.st-on.c-late,#cohorts tbody tr td.c-late[style]{color:#6b2f05}#cohorts td{vertical-align:middle}#cohorts td.summary{white-space:nowrap}#cohorts td.sc{cursor:pointer}#cohorts td.sc.sel{box-shadow:inset 0 0 0 2.5px #1d4ed8}#cohorts td.strip-cell{text-align:left;white-space:nowrap;padding-right:13px;width:1%}.stripwrap{display:flex;align-items:center;gap:6px}.striptext{display:inline-flex;align-items:center;gap:4px}.stnum{min-width:18px;text-align:right;font-variant-numeric:tabular-nums}.stof{min-width:27px;line-height:1.15}.strip{display:flex;flex-wrap:wrap;gap:7px 12px;flex:none;width:max-content;max-width:150px}@media (min-width:1720px){.strip{max-width:312px}}.dgrp{display:flex;gap:5px}.sdot{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;cursor:pointer;color:#fff;font-size:11px;font-weight:700;font-style:normal;letter-spacing:-.2px;line-height:1;flex:none}.sdot.gone{background:#fff;box-shadow:inset 0 0 0 1.5px #b9b0cf;cursor:default}.sdot.ring{box-shadow:0 0 0 2px #fff,0 0 0 4px #1d4ed8}.conn{display:inline-flex;align-items:center;gap:3px;padding:3px 5px;border-radius:4px;cursor:pointer;white-space:nowrap}.conn b{display:block;width:15px;height:15px;border-radius:3px;box-shadow:inset 0 0 0 1px #cbbfe6}.conn .cn{margin-left:7px;font-size:13px;color:#555}.conn.lit{box-shadow:0 0 0 2px #1d4ed8;background:#fff}tr.hl.soft td{background:#f5f9fe}tr.hl.soft td:first-child{box-shadow:inset 4px 0 0 #bcd3f5}tr.focus td{background:#d3e3f8}#cohorts td.flagcell{cursor:pointer;font-weight:600;color:#92400e}#cohorts td.flagcell.sel{box-shadow:inset 0 0 0 2.5px #1d4ed8}#cohorts td.oc{font-weight:600}#cohorts td.phdpair,#cohorts th.phdpair{background:#f1f8f4}#cohorts th.oh{white-space:nowrap;line-height:1.2;vertical-align:bottom;padding-left:6px;padding-right:6px}#cohorts th.fit{line-height:1.2}.ohd{display:inline-grid;grid-auto-flow:column;align-items:center;column-gap:6px;text-align:left}#cohorts thead tr:last-child th{vertical-align:bottom}.sdot.gone{cursor:default}#tip{position:fixed;z-index:20;pointer-events:none;display:none;max-width:300px;background:#2e1a5c;color:#fff;font-size:13px;line-height:1.45;padding:8px 11px;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25)}#tip .th{font-weight:600;margin-bottom:3px}#tip .tn{color:#e8e3d3}#tip ul{margin:4px 0 0;padding-left:16px}#tip .tf{margin-top:5px;color:#cbbfe6;font-size:12px}tr.focus td:first-child{box-shadow:inset 5px 0 0 #1d4ed8}'
+        + '#cohorts .blk{border-left:2px solid #e8e3f3}#cohorts td.st-none{color:#c9c9c9}#cohorts td.st-on{color:#2e1a5c;font-weight:600}#cohorts tbody tr td.st-on.c-late,#cohorts tbody tr td.c-late[style]{color:#6b2f05}#cohorts td{vertical-align:middle}#cohorts td.summary{white-space:nowrap}#cohorts td.sc{cursor:pointer}#cohorts td.sc.sel{box-shadow:inset 0 0 0 2.5px #1d4ed8}#cohorts td.strip-cell{text-align:left;white-space:nowrap;padding-right:13px;width:1%}.stripwrap{display:flex;align-items:center;gap:6px}.striptext{display:inline-flex;align-items:center;gap:4px}.stnum{min-width:18px;text-align:right;font-variant-numeric:tabular-nums}.stof{min-width:27px;line-height:1.15}.strip{display:flex;flex-wrap:wrap;gap:7px 12px;flex:none;width:max-content;max-width:150px}@media (min-width:1720px){.strip{max-width:312px}}.dgrp{display:flex;gap:5px}.sdot{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;cursor:pointer;color:#fff;font-size:11px;font-weight:700;font-style:normal;letter-spacing:-.2px;line-height:1;flex:none}.sdot.gone{background:#fff;box-shadow:inset 0 0 0 1.5px #b9b0cf;cursor:default}.sdot.ring{box-shadow:0 0 0 2px #fff,0 0 0 4px #1d4ed8}.conn{display:inline-flex;align-items:center;gap:3px;padding:3px 5px;border-radius:4px;cursor:pointer;white-space:nowrap}.conn b{display:block;width:15px;height:15px;border-radius:3px;box-shadow:inset 0 0 0 1px #cbbfe6}.conn .cn{margin-left:7px;font-size:13px;color:#555}.conn.lit{box-shadow:0 0 0 2px #1d4ed8;background:#fff}tr.hl.soft td{background:#f5f9fe}tr.hl.soft td:first-child{box-shadow:inset 4px 0 0 #bcd3f5}tr.focus td{background:#d3e3f8}#cohorts td.flagcell{cursor:pointer;font-weight:600;color:#92400e}#cohorts td.flagcell.sel{box-shadow:inset 0 0 0 2.5px #1d4ed8}#cohorts td.oc{font-weight:600}#cohorts td.phdpair,#cohorts th.phdpair{background:#f1f8f4}#cohorts th.oh{white-space:nowrap;line-height:1.2;vertical-align:bottom;padding-left:6px;padding-right:6px}#cohorts th.fit{line-height:1.2}.ohd{display:inline-grid;grid-auto-flow:column;align-items:center;column-gap:6px;text-align:left}#cohorts thead tr:last-child th{vertical-align:bottom}.sdot.gone{cursor:default}#tip{position:fixed;z-index:20;pointer-events:none;display:none;max-width:300px;background:#2e1a5c;color:#fff;font-size:13px;line-height:1.45;padding:8px 11px;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25)}#tip .th{font-weight:600;margin-bottom:3px}#tip .tn{color:#e8e3d3}#tip ul{margin:4px 0 0;padding-left:16px}#tip .tf{margin-top:5px;color:#cbbfe6;font-size:12px}.chip[data-tiphtml]{cursor:help}tr.focus td:first-child{box-shadow:inset 5px 0 0 #1d4ed8}'
         + '.c-ok{color:#047857;font-weight:600}#cohorts tbody tr td.c-late{background:#fef3c7;color:#92400e;font-weight:600}'
         + '.panel{background:#fff;margin:15px 25px;padding:15px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.05);overflow-x:auto}'
         + '.panel h2{margin:0 0 10px;color:#4b2e83;font-size:20px;border-bottom:2px solid #b7a57a;padding-bottom:6px}.panel h2.dark-head{display:flex;align-items:center;gap:10px;margin:-15px -15px 14px;padding:10px 20px 8px;min-height:44px;background:#2e1a5c;color:#fff;border-bottom:none;border-radius:6px 6px 0 0}.panel.collapsed h2.dark-head{margin-bottom:-15px;padding-bottom:10px;border-radius:6px}.panel.collapsed .dark-head .seg,.panel.collapsed .dark-head select,.panel.collapsed .dark-head input,.panel.collapsed .dark-head .bar-opt{display:none}.classes-head #cohort-note,.classes-head #hist-status{color:#cbbfe6}.classes-head #hist-status{white-space:nowrap;cursor:help}.classes-head .panel-toggle{white-space:nowrap}.panel.collapsed #class-slider,.panel.collapsed #cohort-note,.panel.collapsed #hist-status,.panel.collapsed #ms-status{display:none}#ms-status{color:#cbbfe6;white-space:nowrap;cursor:help}#class-slider{position:relative;flex:1;height:46px;margin:0 44px;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none;font-weight:normal}.sl-seg{position:absolute;top:15px;height:4px;background:#8a72d6}.sl-seg.hist{background:#56565d}.sl-seg.hist.gap{background:repeating-linear-gradient(90deg,#56565d 0 4px,transparent 4px 8px)}.sl-seg.sel{top:13px;height:8px;background:#cdb8fa;cursor:grab}.sl-seg.sel.hist{background:#9d9da5}.sl-seg.sel.hist.gap{background:repeating-linear-gradient(90deg,#9d9da5 0 5px,transparent 5px 8px)}.sl-dot{position:absolute;top:17px;width:22px;height:22px;margin:-11px 0 0 -11px;padding:0;border-radius:50%;background:#efe9f9;border:3px solid #2e1a5c;box-shadow:0 0 0 2px #b9abd8,0 1px 5px rgba(0,0,0,.45);cursor:ew-resize}.sl-dot:focus-visible{outline:none;box-shadow:0 0 0 2px #b9abd8,0 0 0 6px rgba(255,255,255,.35)}.sl-lab{position:absolute;top:30px;transform:translateX(-50%);font-size:13px;font-weight:600;color:#efe9f9;white-space:nowrap;pointer-events:none}.sl-lab.sl-end{color:rgba(255,255,255,.5);font-weight:normal}.set-line{display:flex;gap:6px;align-items:center}.set-note{margin:4px 0 12px 22px}.dark-head .seg{display:inline-flex;margin-left:14px;border:1px solid #8f7bc4;border-radius:15px;overflow:hidden;font-weight:normal}.seg button{background:none;border:0;color:#e6ddf7;font:inherit;font-size:14px;padding:4px 13px;cursor:pointer}.seg button+button{border-left:1px solid #8f7bc4}.seg button b{color:#fff;margin-left:2px}.seg button:hover{background:rgba(255,255,255,.08)}.seg button.on{background:#c3b1f0;color:#2e1a5c}.seg button.on b{color:#2e1a5c}.bar-fill{flex:1}.dark-head select,.dark-head input[type=search]{font-size:14px;padding:4px 7px;border:0;border-radius:5px;font-weight:normal}.dark-head input[type=search]{width:210px}.bar-opt{display:inline-flex;align-items:center;gap:5px;font-size:14px;font-weight:normal;color:#e6ddf7;cursor:pointer;margin-left:4px}.hl-line:empty{display:none}.hl-line{margin:-4px 0 8px}.summary{display:grid;grid-template-columns:1.45fr .8fr 1fr 1.75fr;row-gap:14px;background:#fff;margin:15px 25px 0;padding:14px 0;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.05)}.summary section{padding:0 22px;border-left:2px solid #e8e3f3}.summary section:first-child{border-left:none}@media (max-width:1000px){.summary{grid-template-columns:1fr}.summary section{border-left:none}}.summary h4{margin:0 0 4px;color:#85754d;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}.sm-big{display:flex;align-items:center;gap:12px;font-size:29px;font-weight:700;color:#4b2e83;line-height:1.2;margin-bottom:4px}.sm-parts{display:flex;flex-wrap:wrap;gap:2px 4px;font-size:14px;color:#444}.sm-note{font-size:13px;color:#666}.sm-win{background:none;border:0;padding:0;font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer;text-decoration:underline dotted}.sm-win:hover{color:#4b2e83}.sm-of{font-size:13px;font-weight:normal;color:#666;line-height:1.25;margin-left:4px}.sm-bigs{display:flex;gap:48px;flex-wrap:wrap;margin-bottom:6px}.sm-lines{display:flex;flex-direction:column;gap:3px;font-size:13px;color:#444}.sm-lines b{color:#2e1a5c}.sm-out .small{font-size:12px}.sm-foot{margin-top:3px;font-size:12px;color:#666}#cohorts tr.rates td{border-bottom:none;padding-top:0;font-size:13px;color:#666}#cohorts td.rate-l{text-align:left}#cohorts tr.star td{border:none;background:#fff;padding-top:6px;text-align:right;font-size:13px;color:#666;white-space:nowrap}.outcomes:empty{display:none}.outcomes{margin:12px 0 0;font-size:14px;color:#333;line-height:1.7}.outcomes strong{color:#2e1a5c}.outcomes .sep{color:#bbb;margin:0 8px}.outcomes b{color:#2e1a5c}.sm-sep{width:1px;align-self:stretch;background:#ddd;margin:3px 10px 3px 4px}.sm-others{margin-top:4px;align-items:center;font-size:13px}.sm-others .sm-note{margin-right:6px}.sm-n{background:none;border:0;border-radius:4px;padding:2px 6px;margin-left:-6px;font:inherit;color:inherit;cursor:pointer}.sm-n b{color:#2e1a5c}.sm-n:hover{background:#f3eefc}.sm-n.on{background:#dbe8fb;box-shadow:inset 0 0 0 1.5px #2563eb}.sm-n.big{font-size:29px;font-weight:700;padding:0 6px}.sm-n.big b{color:#4b2e83}.sm-n.late b{color:#92400e}#roster td.coh,#formers td.coh{position:relative;vertical-align:top;background:#fff;box-shadow:none;padding:0 10px 0 22px;cursor:pointer;width:1%;min-width:96px;border-bottom:1px solid #e2dcef}.coh-bar{position:absolute;left:8px;top:7px;bottom:7px;width:4px;border-radius:2px;background:#c9bdea}#formers td.coh:hover .coh-bar,#roster td.coh:hover .coh-bar{background:#9f8bd6}#formers td.coh.c-active .coh-bar,#roster td.coh.c-active .coh-bar{background:#2563eb;width:6px;left:7px}#roster td.coh.other{cursor:default}#roster td.coh.other .coh-bar{background:#d4d4d8}.coh-label{position:sticky;top:8px;display:flex;flex-direction:column;padding:8px 0;line-height:1.35;max-width:120px}.coh-label b{color:#2e1a5c;font-size:15px}.coh-label span{font-size:13px;color:#666}.coh-label em{font-style:normal;color:#92400e;font-weight:600}#formers td.coh.c-active .coh-label b,#roster td.coh.c-active .coh-label b{color:#1d4ed8}#roster.by-cohort tr.hl td.nm{box-shadow:inset 4px 0 0 #2563eb}#roster.by-cohort tr.hl.soft td.nm{box-shadow:inset 4px 0 0 #bcd3f5}#roster.by-cohort tr.focus td.nm{box-shadow:inset 5px 0 0 #1d4ed8}'
@@ -567,6 +576,11 @@ javascript:(function(){
         function esc(s){ return String(s === null || s === undefined ? "" : s).replace(/[&<>"']/g, function(c){ return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
         function lines(v){ return String(v || "").split(/<br\s*\/?>/i).map(function(x){ return x.replace(/<[^>]*>/g, "").trim(); }).filter(Boolean); }
         function chip(cls, text, title){ return "<span class='chip " + cls + "'" + (title ? " title='" + esc(title) + "'" : "") + ">" + esc(text) + "</span>"; }
+        /* A chip whose hover is the page's own popup (#tip, as on stage cells and dots): a heading, then short lines. */
+        function tipChip(cls, text, head, lines){
+            var html = "<div class='th'" + (lines.length ? "" : " style='margin:0'") + ">" + esc(head) + "</div>" + lines.map(function(l){ return "<div class='tn'>" + esc(l) + "</div>"; }).join("");
+            return "<span class='chip " + cls + "' data-tiphtml='" + esc(html) + "'>" + esc(text) + "</span>";
+        }
 
         /* Academic years start in autumn; summer admits join the autumn cohort that follows. */
         var now = new Date(data.generated);
@@ -632,8 +646,8 @@ javascript:(function(){
                well past the requirement suggests a student adrift and accumulating debt. A new candidate isn't flagged until a
                quarter after their exam. */
             var n800 = credits800(s), sinceExam = s.ms && s.ms.candDate ? (Date.now() - new Date(s.ms.candDate).getTime()) / 864e5 : null;
-            if(stage >= 3 && n800 === 0 && (sinceExam === null || sinceExam > 100)) f.push(["amber", "No 800 credits as a candidate", "A candidate with no dissertation (800) credits on the transcript: probably still registering for 600 credits"]);
-            if(n800 !== null && n800 > settings.max800) f.push(["amber", "Over " + settings.max800 + " credits of 800", n800 + " dissertation (800) credits on the transcript; the Grad School requires " + settings.need800 + ". Check progress, supervision and tuition costs."]);
+            if(stage >= 3 && n800 === 0 && (sinceExam === null || sinceExam > 100)) f.push(["amber", "No 800 credits as a candidate"]);
+            if(n800 !== null && n800 > settings.max800) f.push(["amber", "Over " + settings.max800 + " credits of 800"]);
             if(s.level === "Doctoral" && y >= settings.docWarn) f.push(["red", "Year " + y + " of 10-year limit"]);
             if(s.level === "Master's" && y >= settings.mastersWarn) f.push(["red", "Year " + y + " of 6-year limit"]);
             if(settings.gpaOn && d.GPA !== "" && Number(d.GPA) < settings.gpaMin) f.push(["amber", "GPA below " + settings.gpaMin]);
@@ -646,7 +660,7 @@ javascript:(function(){
             if(s.level === "Certificate") return "<span class='small'>Certificate student: degree milestones are tracked by their home program</span>";
             if(s.level === "Non-matriculated") return "<span class='small'>Non-matriculated student: no degree milestones</span>";
             var yn =function(v, label){ return chip(yes(v) ? "yes" : "no", (yes(v) ? "✓ " : "✗ ") + label); };
-            var out = yn(hasAdvisor(d) ? "Yes" : "No", "Advisor") + chip(maDone(s) ? "yes" : "no", (maDone(s) ? "✓ " : "✗ ") + "MA", maTip(s));
+            var out = yn(hasAdvisor(d) ? "Yes" : "No", "Advisor") + maChip(s);
             if(s.level === "Doctoral") out += yn(d.HasDocComm, "Doc. committee") + candidacyChip(s) + yn(d.HasReadingComm, "Reading committee") + creditsChip(s);
             else out += yn(d.HasMastersComm, "Master's committee");
             var req = [["Master's", d.MastersRequests], ["General exam", d.GenExamRequests], ["Final exam", d.FinalExamRequests]];
@@ -654,38 +668,39 @@ javascript:(function(){
             return out;
         }
 
-        function maTip(s){
-            var d = s.d, why = [];
-            if(/granted|awarded/i.test(d.MastersRequests)) why.push("A master’s request is granted");
-            if(uwDegree(s, "ma")) why.push("MyGrad’s UW degrees list has the master’s in " + fieldsFor(s).join(" or ").toLowerCase());
-            return why.length ? why.join(". ") + "." : "No granted master’s request, and no master’s in " + fieldsFor(s).join(" or ").toLowerCase() + " in MyGrad’s UW degrees list.";
+        function maChip(s){
+            var d = s.d, done = maDone(s), field = fieldsFor(s).join(" or ").toLowerCase(), why = [];
+            if(/granted|awarded/i.test(d.MastersRequests)) why.push("Master’s request granted");
+            if(uwDegree(s, "ma")) why.push("UW degrees: master’s in " + field);
+            if(!done) why.push("No granted master’s request, and no master’s in " + field + " among UW degrees");
+            return tipChip(done ? "yes" : "no", (done ? "✓ " : "✗ ") + "MA", done ? "MA on record" : "No MA on record", why);
         }
         function candidacyChip(s){
             var d = s.d, m = s.ms || {}, c = candidate(s), why = [];
-            if(m.cand === true) why.push("Candidacy Granted on the doctoral exam requests page" + (m.candDate ? " (exam " + m.candDate + ")" : ""));
-            else if(m.cand === false) why.push("No Candidacy Granted on the doctoral exam requests page");
-            else if(m.candError) why.push("Couldn’t read the doctoral exam requests page: " + m.candError);
-            else if(ms.pending) why.push("Checking the doctoral exam requests page…");
-            else if(ms.org === false) why.push("The doctoral exam requests page wasn’t read: MyGrad’s org number for the department isn’t on this MyGrad page");
-            why.push("MyGrad’s candidacy field (HasPhC) says " + (yes(d.HasPhC) ? "Yes" : "No"));
-            if(/candidacy\s+granted/i.test(d.GenExamRequests)) why.push("The general exam requests say Candidacy Granted");
-            return chip(c ? "yes" : "no", (c ? "✓ " : "✗ ") + "Candidacy", why.join(". ") + ".");
+            if(m.cand === true) why.push("Exam requests page: Candidacy Granted" + (m.candDate ? ", exam " + m.candDate : ""));
+            else if(m.cand === false) why.push("Exam requests page: no Candidacy Granted");
+            else if(m.candError) why.push("Exam requests page couldn’t be read (" + m.candError + ")");
+            else if(ms.pending) why.push("Checking the exam requests page…");
+            else if(ms.mygradError) why.push("Exam requests page not read: MyGrad returns its error page here");
+            else if(ms.org === false) why.push("Exam requests page not read: no MyGrad org number on this page");
+            why.push("MyGrad’s candidacy field (HasPhC): " + (yes(d.HasPhC) ? "Yes" : "No"));
+            if(/candidacy\s+granted/i.test(d.GenExamRequests)) why.push("General exam requests: Candidacy Granted");
+            return tipChip(c ? "yes" : "no", (c ? "✓ " : "✗ ") + "Candidacy", c ? "Candidacy granted" : "No candidacy on record", why);
         }
         /* Dissertation (800) credits against the Grad School's minimum: 27, over at least three quarters, at least one of them
            after the general exam (Policy 1.1). */
         function creditsChip(s){
             var m = s.ms || {}, n = credits800(s), need = settings.need800, cand = candidate(s);
             /* Shown for candidates, and for anyone who already has some 800 credits. */
-            if(n === null) return !cand ? "" : m.trError ? chip("gray", "800 credits ?", "Couldn’t read the transcript: " + m.trError) : ms.pending ? chip("gray", "800 credits …", "Reading the transcript…") : "";
+            if(n === null) return !cand ? "" : m.trError ? tipChip("gray", "800 credits ?", "Transcript couldn’t be read", [m.trError]) : ms.pending ? tipChip("gray", "800 credits …", "Reading the transcript…", []) : "";
             if(!cand && !n) return "";
-            var tip = n + " dissertation (800) credits on the transcript";
-            if(m.quarters) tip += ", in " + m.quarters + (m.quarters === 1 ? " quarter" : " quarters") + " (" + m.first + (m.last !== m.first ? " to " + m.last : "") + ")";
+            var lines = [];
+            if(m.quarters) lines.push((m.last !== m.first ? m.first + " to " + m.last : m.first) + " (" + m.quarters + (m.quarters === 1 ? " quarter" : " quarters") + ")");
             if(m.qIdx && m.candDate){
                 var dt = m.candDate.split("/"), mo = +dt[0], examQ = +dt[2] * 4 + (mo <= 3 ? 0 : mo <= 6 ? 1 : mo <= 8 ? 2 : 3), after = m.qIdx.filter(function(q){ return q > examQ; }).length;
-                tip += "; " + after + " of those quarters after the general exam (" + m.candDate + ")";
+                lines.push(after + (after === 1 ? " quarter" : " quarters") + " after the general exam on " + m.candDate);
             }
-            tip += ". The Grad School requires " + need + ", over at least three quarters, with at least one after the general exam.";
-            return chip(n >= need ? "yes" : "info", (n >= need ? "✓ " : "") + "800 credits: " + n + (n >= need ? "" : " of " + need), tip);
+            return tipChip(n >= need ? "yes" : "info", (n >= need ? "✓ " : "") + "800 credits: " + n + (n >= need ? "" : " of " + need), n + " credits of 800", lines);
         }
 
         function notes(s){
@@ -1280,13 +1295,15 @@ javascript:(function(){
             Object.keys(msg.results || {}).forEach(function(i){ if(data.students[i]) data.students[i].ms = msg.results[i]; });
             ms.pending = false;
             ms.org = msg.org;
+            ms.mygradError = !!msg.mygradError;
             var all = Object.keys(msg.results || {}).map(function(i){ return msg.results[i]; });
-            var trFail = all.filter(function(r){ return r.trError; }).length, rqFail = all.filter(function(r){ return r.candError; }).length;
+            var trFail = all.filter(function(r){ return r.trError; }).length, rqFail = msg.mygradError ? 0 : all.filter(function(r){ return r.candError; }).length;
             var read = msg.total - trFail;
             var problems = (msg.signedOut ? "MyGrad signed you out partway, so some weren’t read. Sign in again and reopen MyGradMod. " : "")
                 + (trFail ? trFail + (trFail === 1 ? " transcript" : " transcripts") + " couldn’t be read. " : "") + (rqFail ? rqFail + " exam requests " + (rqFail === 1 ? "page" : "pages") + " couldn’t be read. " : "")
-                + (msg.org ? "" : "The doctoral exam requests pages weren’t read: MyGrad’s org number for the department isn’t on this MyGrad page, so candidacy comes from MyGrad’s records only. ");
-            el.textContent = msg.total ? "· " + (msg.signedOut || trFail || rqFail ? "Some transcripts or exam requests unread" : "800 credits and candidacy read") : "";
+                + (msg.mygradError ? "MyGrad answers the doctoral exam requests page with its error page here, so those pages aren’t read (for a week) and candidacy comes from MyGrad’s records only. "
+                    : msg.org ? "" : "The doctoral exam requests pages weren’t read: MyGrad’s org number for the department isn’t on this MyGrad page, so candidacy comes from MyGrad’s records only. ");
+            el.textContent = msg.total ? "· " + (msg.signedOut || trFail || rqFail ? "Some transcripts or exam requests unread" : msg.org && !msg.mygradError ? "800 credits and candidacy read" : "800 credits read; exam requests not read") : "";
             el.title = msg.total ? "Read from each current doctoral student’s transcript" + (msg.org ? " and doctoral exam requests page" : "") + ": " + read + " of " + msg.total + " transcripts. " + problems
                 + "Hover a student’s Candidacy and 800 credits for where each comes from." : "";
             toast(msg.total ? (problems ? "<span class='warn'>" + esc(problems.trim()) + "</span>" : "Candidacy and 800 credits read for <b>" + msg.total + "</b> doctoral " + (msg.total === 1 ? "student" : "students") + ".") : "", 8000, "ms");
@@ -1366,6 +1383,8 @@ javascript:(function(){
             }
         });
         document.getElementById("cohorts").addEventListener("mouseleave", hideTip);
+        document.getElementById("roster").addEventListener("mousemove", function(e){ var c = e.target.closest("[data-tiphtml]"); if(c) showTip(c.getAttribute("data-tiphtml"), e); else hideTip(); });
+        document.getElementById("roster").addEventListener("mouseleave", hideTip);
         document.getElementById("cohorts").addEventListener("click", hideTip);
         function select(k){
             view.highlight = view.highlight === k ? null : k;
