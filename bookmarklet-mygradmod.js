@@ -249,10 +249,10 @@ javascript:(function(){
         return { cand: granted.length > 0, date: granted.length ? granted[0].date : null };
     }
     /* If MyGrad answers the exam requests page with its error page (as it did for Philosophy in Oct 2026, with the org number
-       found in the page's links), reading stops at once and isn't tried again in this browser for a week: MyGrad's error page
+       found in the page's links), reading stops at once and isn't tried again in this browser for a minute: MyGrad's error page
        says it notifies the Graduate School, so 20-odd failures per open would each send a report. */
     var REQUESTS_OFF = "mygradmod-exam-requests-off";
-    function requestsOff(org){ try { var v = JSON.parse(localStorage.getItem(REQUESTS_OFF) || "null"); return !!v && v.org === org && Date.now() - v.at < 7 * 864e5; } catch(e){ return false; } }
+    function requestsOff(org){ try { var v = JSON.parse(localStorage.getItem(REQUESTS_OFF) || "null"); return !!v && v.org === org && Date.now() - v.at < 60 * 1000; } catch(e){ return false; } }
     function loadMilestones(targets){
         var org = findOrg(), results = {}, stop = false, trDone = 0, rqDone = 0, queue = targets.slice(), mygradError = false;
         if(org && requestsOff(org)){ mygradError = true; org = null; }
@@ -1335,7 +1335,7 @@ javascript:(function(){
             var read = msg.total - trFail;
             var problems = (msg.signedOut ? "MyGrad signed you out partway, so some weren’t read. Sign in again and reopen MyGradMod. " : "")
                 + (trFail ? trFail + (trFail === 1 ? " transcript" : " transcripts") + " couldn’t be read. " : "") + (rqFail ? rqFail + " exam requests " + (rqFail === 1 ? "page" : "pages") + " couldn’t be read. " : "")
-                + (msg.mygradError ? "MyGrad answers the doctoral exam requests page with its error page here, so those pages aren’t read (for a week) and candidacy comes from MyGrad’s records only. "
+                + (msg.mygradError ? "MyGrad answers the doctoral exam requests page with its error page here, so those pages aren’t read (MyGradMod tries again after a minute) and candidacy comes from MyGrad’s records only. "
                     : msg.org ? "" : "The doctoral exam requests pages weren’t read: MyGrad’s org number for the department isn’t on this MyGrad page, so candidacy comes from MyGrad’s records only. ");
             el.textContent = msg.total ? "· " + (msg.signedOut || trFail || rqFail ? "Some transcripts or exam requests unread" : msg.org && !msg.mygradError ? "800 credits and candidacy read" : "800 credits read; exam requests not read") : "";
             el.title = msg.total ? "Read from each current doctoral student’s transcript" + (msg.org ? " and doctoral exam requests page" : "") + ": " + read + " of " + msg.total + " transcripts. " + problems

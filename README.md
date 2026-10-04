@@ -135,7 +135,7 @@ Hovering explains most numbers in place, e.g. why a cell is marked "stalled".
 - **Transcripts and exam requests take another half minute or so.** They're read in the background too, and a toast shows the progress. The Students bar says when they're done, and its hover lists any pages that couldn't be read.
   - **Exam requests pages are read one at a time,** because MyGrad keeps the student being viewed in its session.
   - **The org number:** these pages need the department's MyGrad org number, which MyGradMod finds on the By Quarter page. If it can't find it, candidacy comes from MyGrad's records alone, and the hover says so.
-  - **MyGrad's error page:** if MyGrad answers with its error page instead, MyGradMod stops at the first one. It doesn't try again in that browser for a week, since each error page notifies the Graduate School. Candidacy then comes from MyGrad's records, and the hover says so.
+  - **MyGrad's error page:** if MyGrad answers with its error page instead, MyGradMod stops at the first one. It tries again only after a minute, since each error page notifies the Graduate School. Candidacy then comes from MyGrad's records, and the hover says so.
 
 ## Credit
 
