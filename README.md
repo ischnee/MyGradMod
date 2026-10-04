@@ -68,7 +68,7 @@ javascript:(function(){
   var s = document.createElement('script');
   s.src = 'https://cdn.jsdelivr.net/gh/ischnee/MyGradMod@main/bookmarklet-mygradmod.js?t=' + Date.now();
   s.onload = function() { console.log('[Bookmarklet] Script loaded'); };
-  s.onerror = function() { console.error('[Bookmarklet] Failed to load script'); };
+  s.onerror = function() { alert("MyGradMod couldn't load on this page. Open MyGrad > Students > Student Lists > By Quarter, then click it again."); };
   document.body.appendChild(s);
 })();
 ```
