@@ -116,7 +116,7 @@ Hovering explains most numbers in place, e.g. why a cell is marked "stalled".
 
 ## Cautions
 
-- **Philosophy-specific defaults.** Flag thresholds follow the 2026–27 Philosophy Graduate Handbook: MA by the end of year 2, doctoral committee by year 3, candidacy by year 4, reading committee by year 4, and the Graduate School's 10-year doctoral and 6-year master's limits. Change them under Settings. Year in program counts from the admission quarter and doesn't subtract leave.
+- **Philosophy-specific defaults.** Flag thresholds follow the 2026–27 Philosophy Graduate Handbook: MA by the end of year 2, doctoral committee by year 3, candidacy by year 4, reading committee by year 4, and the Graduate School's 10-year doctoral and 6-year master's limits. Change them under Settings. Year in program counts from the student's start and doesn't subtract leave.
   - **Other departments:** degrees are matched to the department's own field from its degree titles, so it should work beyond Philosophy. For example, "MASTER OF ARTS (ANTHROPOLOGY: BIOLOGICAL)" counts in Anthropology, but a master's in another field doesn't.
 - **MyGrad's own data has quirks.** Some students' details come only from older or inactive records, which can be out of date.
   - Examples: a speaking requirement still listed as "Required", or an advisor yes/no field that lags behind the advisor list.
@@ -127,6 +127,11 @@ Hovering explains most numbers in place, e.g. why a cell is marked "stalled".
 - **The full history takes about a minute.** MyGrad's detail records miss many former students. So once the dashboard is open, MyGradMod also reads every past quarter's list, back to about 1990, and adds the former students found only there. Keep the MyGrad tab open until the Entering classes bar says it's done.
   - **Outcomes:** a PhD is read from a last list entry of "Graduated" with the Doctor of Philosophy title. The lists don't record master's degrees, so the others count as "left, no degree".
   - **Candidacy:** the candidacy lines count only students with MyGrad detail records.
+  - **Start dates:** a student's start is MyGrad's admission quarter, unless they first appear on the department's lists in a later year. Then the class, year in the program and years to PhD count from that later quarter.
+    - This happens, for example, after earlier study in another UW program, which MyGrad's admission quarter can include.
+    - Only list entries in the department's own field count, so an earlier MA in another field isn't a start.
+    - It isn't applied to anyone already on the oldest list read, since their start may be earlier still.
+    - The student's hover gives both dates, and the Entering classes bar's hover counts the students moved.
 - **Transcripts and exam requests take another half minute or so.** They're read in the background too, and a toast shows the progress. The Students bar says when they're done, and its hover lists any pages that couldn't be read.
   - **Exam requests pages are read one at a time,** because MyGrad keeps the student being viewed in its session.
   - **The org number:** these pages need the department's MyGrad org number, which MyGradMod finds on the By Quarter page. If it can't find it, candidacy comes from MyGrad's records alone, and the hover says so.
@@ -134,7 +139,7 @@ Hovering explains most numbers in place, e.g. why a cell is marked "stalled".
 
 ## Credit
 
-Reading candidacy from the doctoral exam requests page, and 800 credits from the transcript, follows [Ben Marwick](https://github.com/benmarwick)'s table-audit bookmarklet in [uw-anthro-web-helpers](https://github.com/benmarwick/uw-anthro-web-helpers). He suggested both, and the department-field fix, in [issue #1](https://github.com/ischnee/MyGradMod/issues/1).
+Reading candidacy from the doctoral exam requests page, and 800 credits from the transcript, follows [Ben Marwick](https://github.com/benmarwick)'s table-audit bookmarklet in [uw-anthro-web-helpers](https://github.com/benmarwick/uw-anthro-web-helpers). He suggested both, the department-field fix and the start-date problem in [issue #1](https://github.com/ischnee/MyGradMod/issues/1). For start dates he suggested the first department course on the transcript; MyGradMod uses the department's own quarter lists instead, which it already reads, which cover former students too, and which aren't affected by courses taken as an undergraduate.
 
 ## Screenshots (made-up students)
 

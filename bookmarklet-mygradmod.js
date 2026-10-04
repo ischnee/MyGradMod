@@ -120,7 +120,9 @@ javascript:(function(){
                 if(built.outcomes[k] === "enrolled") return;
                 if(!(k in ctx.before)) added++; else if(ctx.before[k] !== built.outcomes[k]) reread++;
             });
-            tell({ cohorts: built.cohorts, replace: true, found: added, reread: reread, placed: Object.keys(admits).length, oldest: oldest, admits: admits });
+            var later = Object.keys(admits).filter(function(i){ return admits[i].later; }).length;
+            var movedFormer = Object.keys(built.moved).filter(function(k){ return built.outcomes[k] !== "enrolled"; }).length;
+            tell({ cohorts: built.cohorts, replace: true, found: added, reread: reread, placed: Object.keys(admits).length - later, later: later, movedFormer: movedFormer, oldest: oldest, admits: admits });
         };
         (function next(){
             if(w.closed) return;
@@ -427,19 +429,39 @@ javascript:(function(){
         function usableAdmit(d){ return !!d && !!parseInt(d.GradAdmitYr, 10) && QN[normQtr(d.GradAdmitQtr)] !== undefined; }
         /* Current students with no usable admission quarter on their detail record (or no detail record) take their class from
            their first quarter in the program on MyGrad's lists, once the lists are read: { index in students: class }. */
+        /* A student's start in this program, from MyGrad's lists: their first quarter on the department's lists in one of its
+           degree programs, in the student's own field (a title naming no field, such as PRE-DOCTOR, counts). The lists are the
+           department's own, so they begin when the student joined it, while MyGrad's admission quarter can be years earlier for
+           someone who studied at UW in another program first (Ben Marwick, MyGradMod issue #1). Ben suggested the first
+           department course on the transcript; the lists need no extra reading, cover former students too, and aren't fooled
+           by courses taken as an undergraduate. Returns { idx, ay, from, censored } or null. censored: the student is already on
+           the oldest list read, so their start may be earlier still. */
+        function listStart(onLists, k, title){
+            var fields = fieldsFor(title), floor = Infinity;
+            Object.keys(onLists).forEach(function(x){ onLists[x].forEach(function(r){ if(r.idx < floor) floor = r.idx; }); });
+            var first = (onLists[k] || []).filter(function(r){
+                var f = fieldOf(r.title);
+                return PROGRAM_TITLE.test(r.title) && !NON_DEGREE_TITLE.test(r.title) && (!f || fields.indexOf(f) !== -1);
+            }).sort(function(a, b){ return a.idx - b.idx; })[0];
+            return first ? { idx: first.idx, ay: first.code >= 3 ? first.year : first.year - 1, from: QS[first.code] + " " + first.year, censored: first.idx < floor + 4 } : null;
+        }
+        function admitAYOf(d){ var y = parseInt(d.GradAdmitYr, 10), q = normQtr(d.GradAdmitQtr); return q === "AUT" || q === "SUM" ? y : y - 1; }
+        function admitLabel(d){ var q = normQtr(d.GradAdmitQtr); return q.charAt(0) + q.slice(1).toLowerCase() + " " + parseInt(d.GradAdmitYr, 10); }
+        /* Current students whose class comes from the lists: those with no usable admission quarter, and those whose first
+           quarter on the lists falls in a later academic year than their admission quarter (later: true). { index: placement } */
         function admitsFromLists(onLists){
             var out = {};
             studentKeys.forEach(function(k, i){
-                if(usableAdmit(detailByKey[k])) return;
-                var first = (onLists[k] || []).filter(function(r){ return PROGRAM_TITLE.test(r.title) && !NON_DEGREE_TITLE.test(r.title); })
-                    .sort(function(a, b){ return a.idx - b.idx; })[0];
-                if(first) out[i] = { ay: first.code >= 3 ? first.year : first.year - 1, from: QS[first.code] + " " + first.year };
+                var d = detailByKey[k], first = listStart(onLists, k, d ? d.DegreeTitle : rosterTitle[k]);
+                if(!first) return;
+                if(!usableAdmit(d)) out[i] = { ay: first.ay, from: first.from };
+                else if(first.ay > admitAYOf(d) && !first.censored) out[i] = { ay: first.ay, from: first.from, later: true, admitted: admitLabel(d) };
             });
             return out;
         }
         function when(line){ var q = String(line || "").match(/^(win|spr|sum|aut)\w*,?\s+(\d{4})/i); return q ? q[1].charAt(0).toUpperCase() + q[1].slice(1, 3).toLowerCase() + " " + q[2] : ""; }
         function buildHistory(onLists){
-            var history = {}, outcomes = {};
+            var history = {}, outcomes = {}, moved = {};
             Object.keys(detailByKey).concat(Object.keys(onLists).filter(function(k){ return !detailByKey[k]; })).forEach(function(k){
                 var d = detailByKey[k] || null, current = !!isCurrent[k];
                 if(current && !d) return;
@@ -453,6 +475,11 @@ javascript:(function(){
                 var entry = detailDegree && yr && QN[qtr] !== undefined ? { idx: yr * 4 + QN[qtr], ay: qtr === "AUT" || qtr === "SUM" ? yr : yr - 1 }
                     : inProgram.length ? { idx: inProgram[0].idx, ay: inProgram[0].code >= 3 ? inProgram[0].year : inProgram[0].year - 1, fromLists: true } : null;
                 if(!entry) return;
+                /* A later start on the lists moves them to that class, and years to PhD count from it (see listStart). */
+                if(!entry.fromLists){
+                    var later = listStart(onLists, k, d ? d.DegreeTitle : "");
+                    if(later && later.ay > entry.ay && !later.censored){ entry = { idx: later.idx, ay: later.ay, fromLists: true }; moved[k] = true; }
+                }
                 /* Degree evidence on the detail record: MyGrad's request fields miss older degrees, so also read "UW degrees",
                    e.g. "Spring, 2024 - MASTER OF ARTS (PHILOSOPHY)". Only the program's own degrees count (uwDegree). */
                 var own = fieldsFor(d ? d.DegreeTitle : rs.length ? rs[rs.length - 1].title : "");
@@ -503,7 +530,7 @@ javascript:(function(){
                     outcomes[k] = "left";
                 }
             });
-            return { cohorts: Object.keys(history).map(function(key){ return history[key]; }), outcomes: outcomes };
+            return { cohorts: Object.keys(history).map(function(key){ return history[key]; }), outcomes: outcomes, moved: moved };
         }
         var built = buildHistory({}), cohorts = built.cohorts;
         var payload = { students: students, cohorts: cohorts, detailLoaded: current !== null, rosterQuarter: listsLabel, generated: new Date().toISOString(), fields: FIELDS };
@@ -701,6 +728,13 @@ javascript:(function(){
                 lines.push(after + (after === 1 ? " quarter" : " quarters") + " after the general exam on " + m.candDate);
             }
             return tipChip(n >= need ? "yes" : "info", (n >= need ? "✓ " : "") + "800 credits: " + n + (n >= need ? "" : " of " + need), n + " credits of 800", lines);
+        }
+
+        /* Why a student's class comes from MyGrad's lists (see listStart where the data is built). */
+        function startTip(s){
+            return s.mygradAdmit ? "MyGrad’s admission quarter is " + s.mygradAdmit + ", but they first appear on the department’s lists in " + s.admitFromLists
+                + " (for example, after earlier study in another UW program). Their class and year in the program count from " + s.admitFromLists + "."
+                : "No admission quarter on MyGrad’s record: the class is from their first quarter in the program on MyGrad’s lists, " + s.admitFromLists + ".";
         }
 
         function notes(s){
@@ -1130,11 +1164,11 @@ javascript:(function(){
                 var d = s.d;
                 var name = s.link ? "<a href='" + esc(s.link) + "' target='_blank' rel='noopener'>" + esc(s.name) + "</a>" : esc(s.name);
                 var status = esc(s.overall) + "<div class='small'>" + esc(s.quarter) + (s.credits !== "" && s.credits !== null && s.credits !== undefined ? " · " + esc(s.credits) + " cr" : "") + "</div>";
-                var admitted = s.admitFromLists ? "<div class='small' title='No admission quarter on MyGrad’s record: the class is from their first quarter in the program on MyGrad’s lists'>since " + esc(s.admitFromLists) + " (MyGrad’s lists)</div>"
+                var admitted = s.admitFromLists ? "<div class='small' title='" + esc(startTip(s)) + "'>since " + esc(s.admitFromLists) + " (MyGrad’s lists)</div>"
                     : d && d.GradAdmitYr ? "<div class='small'>since " + esc(d.GradAdmitQtr + " " + d.GradAdmitYr) + "</div>" : "";
                 var flags = flagsFor(s).map(function(f){ return chip(f[0], f[1], f[2]); }).join("") + notes(s);
                 var lit = !!(fc && fc(s));
-                return "<tr class='" + (d ? "" : "limited") + (hl && hl(s) ? " hl" + (fc && !lit ? " soft" : "") : "") + (lit ? " focus" : "") + "'>" + (lead || "") + "<td class='nm'" + (s.admitFromLists ? " title='Class from MyGrad’s lists: first in the program " + esc(s.admitFromLists) + " (no admission quarter on record)'" : "") + ">" + name + "</td><td>" + connector(s, lit) + "</td><td>" + esc(s.level) + "<div class='small'>" + esc(s.program) + "</div></td>"
+                return "<tr class='" + (d ? "" : "limited") + (hl && hl(s) ? " hl" + (fc && !lit ? " soft" : "") : "") + (lit ? " focus" : "") + "'>" + (lead || "") + "<td class='nm'" + (s.admitFromLists ? " title='" + esc(startTip(s)) + "'" : "") + ">" + name + "</td><td>" + connector(s, lit) + "</td><td>" + esc(s.level) + "<div class='small'>" + esc(s.program) + "</div></td>"
                     + (grouped ? "" : "<td>" + (s.year === null ? "—" : s.year) + admitted + "</td>") + "<td>" + status + "</td><td>" + (d ? lines(d.AdvisorChair).map(esc).join("<br>") || "—" : "") + "</td><td>" + milestones(s)
                     + "</td><td>" + funding(s) + "</td><td>" + flags + "</td></tr>";
             };
@@ -1204,7 +1238,7 @@ javascript:(function(){
             + "<div class='panel-body' id='body-formers'><table id='formers'></table></div></div>"
             + "<div id='tip' role='tooltip'></div>"
             + "<footer>These are student records protected by FERPA. For authorized faculty and staff only; don't share or screenshot outside that group. "
-            + "Nothing is saved except your threshold settings; close this tab when you're done. Year in program counts academic years from the admission quarter and doesn't subtract leave. "
+            + "Nothing is saved except your threshold settings; close this tab when you're done. Year in program counts academic years from the student's start (MyGrad's admission quarter, or their first quarter on the department's lists if that's a later year) and doesn't subtract leave. "
             + "Default thresholds follow the Philosophy Graduate Handbook timeline, whose benchmarks pause during official leave; the 10-year doctoral and 6-year master's limits (Grad School policy) include leave. "
             + "Check a student's leave history and the current policies before acting on a flag.</footer>";
 
@@ -1322,20 +1356,23 @@ javascript:(function(){
             Object.keys(msg.admits || {}).forEach(function(i){
                 var s = data.students[i], a = msg.admits[i];
                 if(!s) return;
-                s.cohort = a.ay; s.year = currentAY - a.ay + 1; s.admitFromLists = a.from;
+                s.cohort = a.ay; s.year = currentAY - a.ay + 1; s.admitFromLists = a.from; s.mygradAdmit = a.later ? a.admitted : null;
             });
             historyPending = false;
             mergedFor = null;
             historyDerived();
             fillPrograms();
             updateSkippedNote();
-            el.textContent = msg.found ? "· " + msg.found + " more from MyGrad’s quarter lists" : msg.reread || msg.placed ? "· " + (msg.reread + msg.placed) + " updated from MyGrad’s quarter lists" : "";
-            var extras = [msg.reread ? "<b>" + msg.reread + "</b> updated" : "", msg.placed ? "<b>" + msg.placed + "</b> current student" + (msg.placed === 1 ? "" : "s") + " placed in their class" : ""].filter(Boolean);
+            el.textContent = msg.found ? "· " + msg.found + " more from MyGrad’s quarter lists" : msg.reread || msg.placed || msg.later || msg.movedFormer ? "· " + (msg.reread + msg.placed + (msg.later || 0) + (msg.movedFormer || 0)) + " updated from MyGrad’s quarter lists" : "";
+            var moved = (msg.later || 0) + (msg.movedFormer || 0);
+            var extras = [msg.reread ? "<b>" + msg.reread + "</b> updated" : "", msg.placed ? "<b>" + msg.placed + "</b> current student" + (msg.placed === 1 ? "" : "s") + " placed in their class" : "",
+                moved ? "<b>" + moved + "</b> start" + (moved === 1 ? "" : "s") + " moved later, to when they joined the department’s lists" : ""].filter(Boolean);
             toast((msg.found ? "Full history added: <b>" + msg.found + "</b> more former students in Entering classes" : "Full history checked: no more former students found")
                 + (extras.length ? ", and " + extras.join(" and ") + "." : "."), 6000, "hist");
-            el.title = msg.found || msg.reread || msg.placed ? (msg.found ? msg.found + " former students were found only through MyGrad’s quarter lists (which go back to " + msg.oldest + ")" : "No more former students were found")
+            el.title = msg.found || msg.reread || msg.placed || msg.later || msg.movedFormer ? (msg.found ? msg.found + " former students were found only through MyGrad’s quarter lists (which go back to " + msg.oldest + ")" : "No more former students were found")
                 + (msg.reread ? ", and the lists changed the outcome of " + msg.reread + " already counted (for example, a PhD their detail record didn’t show)" : "")
                 + (msg.placed ? "; " + msg.placed + " current student" + (msg.placed === 1 ? " has" : "s have") + " no admission quarter on record and joined the class of their first quarter on the lists" : "")
+                + (msg.later || msg.movedFormer ? "; " + ((msg.later || 0) + (msg.movedFormer || 0)) + " (" + (msg.later || 0) + " current, " + (msg.movedFormer || 0) + " former) first appear on the department’s lists in a later year than MyGrad’s admission quarter, e.g. after earlier study in another UW program, so their class, year in the program and years to PhD count from then" : "")
                 + ". A student with no admission quarter on record counts in the entering class of their first quarter in the PhD or MA program. "
                 + "PhD: a list shows them Graduated with the Doctor of Philosophy title (true of 16 of 17 PhDs with detail records), if their detail record doesn’t show it. MA: Graduated under another program title (MyGrad’s lists rarely record an MA). Otherwise they left. Students with no detail record have no candidacy record, so the candidacy lines leave them out." : "";
             render();
