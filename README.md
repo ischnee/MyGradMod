@@ -29,8 +29,9 @@ The script does not collect or use any information about the student outside of 
 **How MyGradMod handles student data:**
 - **It runs entirely in your browser.** It reads MyGrad data you can already see while logged in, and opens the dashboard in a new tab.
   - Nothing is sent anywhere.
-  - Nothing is stored except your display settings: flag thresholds, the classes the slider selects, and which sections are collapsed. These are kept in your browser.
-- **It takes only the fields it needs.** It never uses ethnicity, gender, visa status, residency, addresses, emails, NetIDs, student numbers, GRE scores or previous institutions.
+  - Nothing is stored except your display settings (flag thresholds, the classes the slider selects, which sections are collapsed) and any Excel templates you add for Export. These are kept in your browser.
+- **It takes only the fields it needs.** It never uses ethnicity, gender, visa status, residency, addresses, GRE scores or previous institutions. Emails, NetIDs and student numbers are used only to fill an Excel template you export to; they don't show on the dashboard.
+- **Export to Excel makes a file with student records.** It's built in your browser and downloaded to your computer. Keep it where UW allows student records, such as UW OneDrive or SharePoint, not a personal drive.
 - **For current doctoral students, it also reads two of their MyGrad pages: the transcript and the doctoral exam requests page.** It keeps only:
   - the number of dissertation (800) credits, and which quarters they fall in
   - whether candidacy was granted, and the exam date
@@ -106,6 +107,7 @@ This short script loads the latest version of MyGradMod from this repository eac
   - Views: In the program, Flagged, All.
   - Search by name or advisor.
   - Clicking a cohort, stage cell or dot highlights those students across the page.
+  - **Export…** (in the Students bar) and the **⤓** button at the end of each row fill an Excel template for the students you pick. See [Export to Excel](#export-to-excel).
 - **Former students:** closed until you open it. It lists everyone who has finished or left, by entering class, with outcome, quarter and years to PhD.
   - Views: All, PhD, Left with MA, Left.
   - Search by name.
@@ -113,6 +115,39 @@ This short script loads the latest version of MyGradMod from this repository eac
 - **Settings (gear icon):** flag thresholds, plus display options.
 
 Hovering explains most numbers in place, e.g. why a cell is marked "stalled".
+
+## Export to Excel
+
+Fill your own Excel template with what MyGradMod knows about the students you pick.
+
+- **Add a template once.** Click **Export…**, then **Add a template…** and pick the .xlsx file. It stays in your browser for next time and is never uploaded.
+- **Pick students.** The dialog lists the students Students is showing, by entering class: from **Export…** all are checked; from a row's **⤓**, just that student. Click a class's heading to check or uncheck the whole class.
+- **Export** downloads a filled copy of the template. Your template itself is never changed.
+
+**Two layouts, recognized from the template's own labels:**
+
+- **A tab per student:** a sheet laid out for one student, with labels such as "Name:", "Qtr Entered:", "MA Awarded" or "Dissertation Chair". Each student gets a copy of the sheet as their own tab, named for them. A label ending in a colon gets the value after it in the same cell; any other label, the cell to its right.
+- **A row per student:** a sheet with a header row naming at least three columns MyGradMod knows, one of them "Name". Everything below the header row is replaced by one row per student. The rows take the first example row's formats, and any formulas in the example rows (a salary lookup, say) are carried down to every row. Comments on the old rows are removed.
+
+**What it fills** (case and spacing don't matter):
+
+| Label or column | Value |
+|---|---|
+| Name, Full Name, Last Name, First Name | The student's name (preferred name if MyGrad has one) |
+| Student No, Email, NetID | From MyGrad's quarter lists |
+| Program, Degree Title | From the degree title, e.g. "Instrumental Conducting" and "DOCTOR OF MUSICAL ARTS (INSTRUMENTAL CONDUCTING)" |
+| New (N)/Returning (R) | N for a new student, otherwise R |
+| Qtr Entered, Entering Class / Cohort | The student's start (see Start dates under Cautions) |
+| Advisor, Dissertation Chair | MyGrad's advisor/chair list |
+| MA Awarded | The quarter of the granted master's request, or of the master's in UW degrees |
+| Supervisory / Doctoral Committee | "Yes" when MyGrad shows one (MyGrad has no date for it) |
+| General Exam (Passed) | The exam's quarter from the exam requests page, or "Yes" for a candidate when it can't be read |
+| Final Exam (Passed), PhD Awarded | The quarter of the awarded final exam, or of the PhD in UW degrees |
+| Dissertation credits … 800 | Total 800 credits from the transcript, for candidates and anyone with some |
+| ASE Level, PDTA Level | The pay step MyGrad can show: candidate, or post-master's for a UW master's in the student's field. Left blank otherwise, since MyGrad doesn't know degrees from elsewhere. "PDTA Level" takes PDTA1 and PDTA2. |
+| Enroll Confirmation AUT26 (any quarter) | The student's status (and credits) on that quarter's list, for the current and next quarters |
+
+Anything else in the template is left for you. Excel recalculates formulas when it opens the file.
 
 ## Cautions
 

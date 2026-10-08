@@ -4,7 +4,7 @@ javascript:(function(){
        (milestones, committees, funding) by SystemKey, and opens a dashboard tab. Only roster students
        (plus any current student missing from the roster) and only the fields in KEEP reach the
        dashboard; former students appear only in class totals and, on hover, as a name and outcome
-       for their class's hollow dots. Nothing is stored or sent anywhere. Definitions and design decisions are kept
+       for their class's hollow dots. Nothing is sent anywhere, and nothing is stored but settings and any Excel export templates the user adds. Definitions and design decisions are kept
        in the maintainer's notes file (bookmarklet-mygradmod-notes.md, not published). */
     /* MyGradMod's own message box, shown inside the MyGrad page: lower down than a browser alert, and headed so a
        first-time user knows the bookmarklet itself is installed and working. OK, Enter, Escape or a click outside closes it. */
@@ -320,6 +320,19 @@ javascript:(function(){
         + '.yes{background:#d1fae5;color:#047857}.no{background:#f3f4f6;color:#6b7280}.red{background:#fee2e2;color:#b91c1c}.amber{background:#fef3c7;color:#92400e}.info{background:#e0e7ff;color:#3730a3}.gray{background:#f3f4f6;color:#4b5563}'
         + '.small{font-size:12px;color:#666}'
         + 'footer{margin:0 25px 25px;font-size:13px;color:#666}#former-count{color:#cbbfe6;font-weight:normal;font-size:15px}.oc-chip{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-weight:600}.oc-chip i{display:inline-block;width:13px;height:13px;border-radius:50%}#formers td.yr{text-align:right;white-space:nowrap}#formers th.yr{text-align:right}.hist-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:12px;width:max-content;max-width:calc(100vw - 40px);box-sizing:border-box;background:#fbf3d5;color:#3d2f0e;border:1px solid #d9c48a;border-left:5px solid #b7a57a;border-radius:8px;box-shadow:0 6px 20px rgba(61,47,14,.25);padding:11px 10px 11px 14px;font-size:14px;line-height:1.5;transition:opacity .4s}.hist-toast b{color:#4b2e83;font-weight:700}.hist-toast button{background:none;border:0;color:#85754d;font-size:20px;line-height:1;cursor:pointer;padding:0 6px;border-radius:4px}.hist-toast button:hover{background:rgba(61,47,14,.08)}.hist-toast.gone{opacity:0}.hist-toast .warn{color:#9a3412;font-weight:600}.hist-toast .ic{flex:none;width:16px;height:16px;box-sizing:border-box;border-radius:50%;color:#047857;font-weight:700;font-size:16px;line-height:16px;text-align:center}.hist-toast .ic::before{content:"✓"}.hist-toast.busy .ic{border:2px solid #e6d5a3;border-top-color:#85754d;animation:toast-spin .9s linear infinite}.hist-toast.busy .ic::before{content:""}@keyframes toast-spin{to{transform:rotate(360deg)}}'
+        + '#roster td.xp-cell{width:1%;padding:5px 6px 5px 2px}.xp-row{background:#fff;border:1px solid #d6cdee;border-radius:5px;color:#4b2e83;cursor:pointer;font-size:14px;line-height:1;padding:3px 6px}.xp-row:hover,.xp-row:focus-visible{background:#efeaf8;border-color:#4b2e83}'
+        + '#export-open{background:none;border:1px solid #8f7bc4;border-radius:15px;color:#e6ddf7;font:inherit;font-size:14px;font-weight:normal;padding:3px 12px;cursor:pointer;white-space:nowrap}#export-open:hover{background:rgba(255,255,255,.08);color:#fff}.panel.collapsed #export-open{display:none}'
+        + '#xp-back{position:fixed;inset:0;z-index:70;background:rgba(30,16,60,.32);display:flex;justify-content:center;align-items:flex-start;padding:8vh 16px 16px;box-sizing:border-box}#xp-back[hidden]{display:none}'
+        + '#xp{width:min(580px,100%);max-height:84vh;display:flex;flex-direction:column;background:#fff;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.28);overflow:hidden;font-size:14px}'
+        + '.xp-head{display:flex;align-items:center;background:#2e1a5c;color:#fff;font-size:17px;font-weight:600;padding:10px 12px 10px 18px}.xp-x{margin-left:auto;background:none;border:0;color:#cbbfe6;font-size:22px;line-height:1;cursor:pointer;padding:0 6px;border-radius:4px}.xp-x:hover{color:#fff;background:rgba(255,255,255,.1)}'
+        + '.xp-sec{padding:12px 18px;border-bottom:1px solid #eee}.xp-grow{flex:1;min-height:0;display:flex;flex-direction:column}'
+        + '.xp-lab{display:flex;align-items:center;gap:8px;color:#85754d;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px}#xp-count{color:#666;font-weight:normal;letter-spacing:0;text-transform:none}'
+        + '.xp-acts{margin-left:auto;display:flex;gap:4px}.xp-acts button{background:none;border:0;color:#4b2e83;font:inherit;font-size:13px;font-weight:600;letter-spacing:0;text-transform:none;cursor:pointer;padding:2px 6px;border-radius:4px}.xp-acts button:hover{background:#efeaf8}'
+        + '.xp-t{display:flex;align-items:flex-start;gap:8px;padding:7px 8px;border:1px solid #e2dcef;border-radius:6px;margin-bottom:6px;cursor:pointer}.xp-t:has(input:checked){border-color:#4b2e83;background:#f6f3fc}.xp-t b{display:block;color:#2e1a5c}.xp-t .small{display:block}'
+        + '.xp-rm{margin-left:auto;background:none;border:0;color:#999;font-size:18px;line-height:1;cursor:pointer;padding:0 4px;border-radius:4px}.xp-rm:hover{color:#b91c1c;background:#fdecec}.xp-empty{margin:0 0 8px}.xp-add{display:inline-block}.xp-add input{display:none}'
+        + '#xp-students{overflow:auto;min-height:0}.xp-g{margin-bottom:8px}.xp-gh{background:none;border:0;padding:2px 0;font:inherit;font-size:13px;font-weight:700;color:#4b2e83;cursor:pointer}.xp-gh:hover{text-decoration:underline}'
+        + '.xp-gs{display:flex;flex-wrap:wrap}.xp-s{display:flex;align-items:center;gap:5px;width:50%;box-sizing:border-box;padding:2px 8px 2px 0;cursor:pointer}'
+        + '.xp-foot{display:flex;align-items:center;gap:14px;padding:12px 18px}#xp-msg{margin:0;flex:1}#xp-msg.err{color:#b91c1c}#xp-go:disabled{opacity:.45;cursor:default}'
         + '</style></head><body>';
 
     /* getStudentList takes a status code per group, -1 leaving the group out. CURRENT is what the Current
@@ -337,6 +350,12 @@ javascript:(function(){
         getJson(nextQ.url).catch(function(){ return null; })
     ]).then(function(res){
         /* The current quarter's row wins for a student on both lists; a student only on the next quarter's list keeps its row. */
+        /* Each student's status and credits on the two quarters' lists, by quarter ("2026-4"), for Export to Excel. */
+        var terms = {};
+        [[res[0], thisQ], [res[3], nextQ]].forEach(function(p){
+            if(p[0] === null) return;
+            rowsOf(p[0]).forEach(function(r){ (terms[r.SystemKey] = terms[r.SystemKey] || {})[p[1].year + "-" + p[1].code] = { status: String(r.quarterStatus || "").trim(), credits: r.credits }; });
+        });
         var roster = rowsOf(res[0]), onThisList = {};
         roster.forEach(function(r){ onThisList[r.SystemKey] = true; });
         (res[3] === null ? [] : rowsOf(res[3])).forEach(function(r){ if(!onThisList[r.SystemKey]){ r.nextOnly = true; roster.push(r); } });
@@ -367,7 +386,7 @@ javascript:(function(){
             studentKeys.push(r.SystemKey);
             var d = detailByKey[r.SystemKey] || null;
             return named({ onRoster: true, link: links[String(r.StudentID)] || (makeLink ? makeLink(r) : ""), overall: r.StudentStatusDesc || "", quarter: (r.quarterStatus || "") + (r.nextOnly ? " (" + nextQ.label + ")" : ""),
-                degreeTitle: r.DegreeTitle || "", degreeCode: r.DegreeCode || "", credits: r.credits, d: d }, r.LegalName || (d ? d.StudentName : ""), d);
+                degreeTitle: r.DegreeTitle || "", degreeCode: r.DegreeCode || "", credits: r.credits, sid: r.StudentID, email: r.e_mail_ucs || "", terms: terms[r.SystemKey] || {}, d: d }, r.LegalName || (d ? d.StudentName : ""), d);
         });
         Object.keys(currentKeys).forEach(function(k){
             if(seen[k]) return;
@@ -622,13 +641,14 @@ javascript:(function(){
             var m = String((s.d && s.d.DegreeTitle) || s.degreeTitle || "").match(/\(\s*([^):]+)/);
             return m ? [m[1].replace(/\s+/g, " ").trim().toUpperCase()] : FIELDS.doctoral.length ? FIELDS.doctoral : FIELDS.all;
         }
-        function uwDegree(s, kind){
+        function uwDegreeLine(s, kind){
             var fields = fieldsFor(s);
-            return lines(s.d && s.d.UWDegrees).some(function(line){
+            return lines(s.d && s.d.UWDegrees).filter(function(line){
                 var m = line.match(/(DOCTOR OF PHILOSOPHY|MASTER OF [A-Z ]+?)\s*\(\s*([^):]+)/i);
                 return !!m && (kind === "phd") === /^DOCTOR/i.test(m[1]) && fields.indexOf(m[2].replace(/\s+/g, " ").trim().toUpperCase()) !== -1;
-            });
+            })[0] || "";
         }
+        function uwDegree(s, kind){ return !!uwDegreeLine(s, kind); }
         function maDone(s){ return !!s.d && (/granted|awarded/i.test(s.d.MastersRequests) || uwDegree(s, "ma")); }
         /* MyGrad's yes/no fields: "Yes", "Y" or "true" in any case. */
         function yes(v){ return /^(y|yes|true)$/i.test(String(v || "").trim()); }
@@ -1157,7 +1177,7 @@ javascript:(function(){
             /* By cohort: a first column labels each entering class once, with a continuous line down beside its students; the Year
                column repeats it, so it is dropped. Rows keep the chosen sort within each cohort. */
             var grouped = view.groupByClass;
-            var cols = [["name", "Student"], ["stage", "Stage"], ["program", "Program"], ["year", "Year"], ["status", "Status"], [null, "Advisor"], [null, "Milestones"], [null, "Funding now"], ["flags", "Flags"]]
+            var cols = [["name", "Student"], ["stage", "Stage"], ["program", "Program"], ["year", "Year"], ["status", "Status"], [null, "Advisor"], [null, "Milestones"], [null, "Funding now"], ["flags", "Flags"], [null, ""]]
                 .filter(function(c){ return !(grouped && c[0] === "year"); });
             if(grouped) cols.unshift([null, "Cohort"]);
             var row = function(s, lead){
@@ -1170,7 +1190,7 @@ javascript:(function(){
                 var lit = !!(fc && fc(s));
                 return "<tr class='" + (d ? "" : "limited") + (hl && hl(s) ? " hl" + (fc && !lit ? " soft" : "") : "") + (lit ? " focus" : "") + "'>" + (lead || "") + "<td class='nm'" + (s.admitFromLists ? " title='" + esc(startTip(s)) + "'" : "") + ">" + name + "</td><td>" + connector(s, lit) + "</td><td>" + esc(s.level) + "<div class='small'>" + esc(s.program) + "</div></td>"
                     + (grouped ? "" : "<td>" + (s.year === null ? "—" : s.year) + admitted + "</td>") + "<td>" + status + "</td><td>" + (d ? lines(d.AdvisorChair).map(esc).join("<br>") || "—" : "") + "</td><td>" + milestones(s)
-                    + "</td><td>" + funding(s) + "</td><td>" + flags + "</td></tr>";
+                    + "</td><td>" + funding(s) + "</td><td>" + flags + "</td><td class='xp-cell'><button type='button' class='xp-row' data-export='" + s.idx + "' title='Export " + esc(s.name) + " to an Excel template' aria-label='Export " + esc(s.name) + " to Excel'>⤓</button></td></tr>";
             };
             var cohortCell = function(label, meta, members, ay){
                 var flagged = members.filter(function(s){ return flagsFor(s).length > 0; }).length;
@@ -1230,7 +1250,7 @@ javascript:(function(){
             + "<div class='panel' id='panel-students'><h2 class='dark-head'><button type='button' class='panel-toggle' data-panel='students' aria-expanded='true' aria-controls='body-students' title='Collapse or expand this section'><span class='chev'>▼</span>Students</button>"
             + "<span class='seg' id='show-seg' role='group' aria-label='Which students'></span><span id='ms-status' class='small'></span><span class='bar-fill'></span>"
             + "<input type='search' id='search' placeholder='Search name or advisor'>"
-            + "<label class='bar-opt'><input type='checkbox' id='group-by-class'> By cohort</label></h2>"
+            + "<label class='bar-opt'><input type='checkbox' id='group-by-class'> By cohort</label><button type='button' id='export-open' title='Fill an Excel template for the students shown here, or the ones you pick'>Export…</button></h2>"
             + "<div class='panel-body' id='body-students'><div id='hl-note' class='hl-line small'></div><table id='roster'></table></div></div>"
             + "<div class='panel collapsed' id='panel-formers'><h2 class='dark-head'><button type='button' class='panel-toggle' data-panel='formers' aria-expanded='false' aria-controls='body-formers' title='Collapse or expand this section. It starts closed each time, so former students’ names show only when you open it.'><span class='chev'>▼</span>Former students</button>"
             + "<span id='former-count'></span><span class='seg' id='former-seg' role='group' aria-label='Which former students'></span><span class='bar-fill'></span>"
@@ -1238,7 +1258,7 @@ javascript:(function(){
             + "<div class='panel-body' id='body-formers'><table id='formers'></table></div></div>"
             + "<div id='tip' role='tooltip'></div>"
             + "<footer>These are student records protected by FERPA. For authorized faculty and staff only; don't share or screenshot outside that group. "
-            + "Nothing is saved except your threshold settings; close this tab when you're done. Year in program counts academic years from the student's start (MyGrad's admission quarter, or their first quarter on the department's lists if that's a later year) and doesn't subtract leave. "
+            + "Nothing is saved except your settings and any Excel templates you add for Export; close this tab when you're done. Year in program counts academic years from the student's start (MyGrad's admission quarter, or their first quarter on the department's lists if that's a later year) and doesn't subtract leave. "
             + "Default thresholds follow the Philosophy Graduate Handbook timeline, whose benchmarks pause during official leave; the 10-year doctoral and 6-year master's limits (Grad School policy) include leave. "
             + "Check a student's leave history and the current policies before acting on a flag.</footer>";
 
@@ -1523,7 +1543,7 @@ javascript:(function(){
         document.addEventListener("pointerdown", function(e){ if(!settingsBox.hidden && !e.target.closest("#settings, #settings-btn")) showSettings(false); });
         /* A click on dead space (not a control, card, class row, dot, connector or the chart) clears the highlight, and so does
            Escape. The press is judged at pointerdown, before a click re-renders what was clicked; drags (selecting text) don't count. */
-        var press = null, LIVE = "a, button, input, select, textarea, label, .pill, th[data-sort], tr[data-cohort], td.coh[data-cohort], .conn, .sdot, #class-slider, #settings";
+        var press = null, LIVE = "a, button, input, select, textarea, label, .pill, #xp-back, th[data-sort], tr[data-cohort], td.coh[data-cohort], .conn, .sdot, #class-slider, #settings";
         document.addEventListener("pointerdown", function(e){ press = { dead: !e.target.closest(LIVE), x: e.clientX, y: e.clientY }; }, true);
         document.addEventListener("click", function(e){
             var p = press;
@@ -1534,7 +1554,9 @@ javascript:(function(){
         });
         document.addEventListener("keydown", function(e){
             if(e.key !== "Escape") return;
-            if(!settingsBox.hidden){ showSettings(false); settingsBtn.focus(); }
+            var xb = document.getElementById("xp-back");
+            if(xb && !xb.hidden) closeExport();
+            else if(!settingsBox.hidden){ showSettings(false); settingsBtn.focus(); }
             else if(view.highlight){ view.highlight = null; render(); }
         });
         ["hl-note"].forEach(function(id){
@@ -1561,6 +1583,8 @@ javascript:(function(){
             select(g.getAttribute("data-cohort"));
         });
         document.getElementById("roster").addEventListener("click", function(e){
+            var xb = e.target.closest("[data-export]");
+            if(xb) return openExport([+xb.getAttribute("data-export")], xb);
             var g = e.target.closest("td.coh[data-cohort]");
             if(g) return select(g.getAttribute("data-cohort"));
             var th = e.target.closest("th[data-sort]");
@@ -1570,6 +1594,562 @@ javascript:(function(){
             view.sort = key;
             render();
         });
+        /* Export to Excel (Oct 2026). Philosophy's graduate advisor keeps a spreadsheet per student; the user adds their own
+           Excel template once (kept in this browser, never in MyGradMod itself), checks students, and MyGradMod fills a copy
+           of the template from what it already shows and downloads it. The layout is recognized from the template's labels:
+           - A row per student: a sheet with a header row of names MyGradMod knows (Name, Student No, Program...). Everything
+             below the header is replaced by one row per student, in the first data row's cell formats, with any formulas in
+             the template's example rows carried down to every row. Comments on the old rows go with them.
+           - A tab per student: a sheet with labels MyGradMod knows ("Name:", "MA Awarded"...). Each student gets a copy as
+             their own tab. A label ending in a colon gets the value after it in the same cell, any other label the cell to
+             its right.
+           Only what MyGradMod already reads is filled; the rest is left for the user. An .xlsx is a zip of XML parts, read and
+           written here with the browser's own (de)compression: no library, and nothing is sent anywhere. */
+        function qtrOf(line){ var m = String(line || "").match(/^\s*(win|spr|sum|aut)\w*,?\s+(\d{4})/i); return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1, 3).toLowerCase() + " " + m[2] : ""; }
+        function dateQtr(date){ var p = String(date || "").split("/"); return p.length < 3 ? "" : (+p[0] <= 3 ? "Win" : +p[0] <= 6 ? "Spr" : +p[0] <= 8 ? "Sum" : "Aut") + " " + p[2]; }
+        /* What a template can be filled with, for one student. step: the ASE pay step MyGrad can show (2 a UW master's in their
+           field, 3 a candidate; 0 unknown, since a master's from elsewhere isn't in MyGrad). */
+        function exportValues(s){
+            var d = s.d || {}, m = s.ms || {}, legal = String(s.legalName || s.name || ""), comma = legal.indexOf(",");
+            var granted = lines(d.MastersRequests).filter(function(l){ return /granted|awarded/i.test(l); })[0] || "";
+            var awarded = lines(d.FinalExamRequests).filter(function(l){ return /awarded/i.test(l); })[0] || "";
+            var field = (String(s.degreeTitle || d.DegreeTitle || "").match(/\(\s*([^)]+?)\s*\)/) || [])[1] || "";
+            var degree = !!s.d && !s.nonDegree, cand = degree && candidate(s), ma = degree && maDone(s), n800 = credits800(s);
+            return {
+                name: s.name, lastName: comma === -1 ? legal : legal.slice(0, comma).trim(), firstName: comma === -1 ? "" : legal.slice(comma + 1).trim(),
+                sid: /^\d+$/.test(String(s.sid)) ? Number(s.sid) : s.sid || "", email: s.email || "", netid: /@uw\.edu$/i.test(s.email || "") ? s.email.split("@")[0] : "",
+                program: field.toLowerCase().replace(/(^|[\s\/:-])([a-z])/g, function(x, a, b){ return a + b.toUpperCase(); }),
+                degreeTitle: s.degreeTitle || d.DegreeTitle || "", newRet: /new/i.test(d.NewContReturn) ? "N" : d.NewContReturn ? "R" : "",
+                entered: s.admitFromLists || (parseInt(d.GradAdmitYr, 10) ? qtrOf(d.GradAdmitQtr + " " + d.GradAdmitYr) : ""),
+                cohort: s.cohort === null || s.cohort === undefined ? "" : classLabel(s.cohort), advisor: lines(d.AdvisorChair).join("; "),
+                ma: qtrOf(granted) || qtrOf(uwDegreeLine(s, "ma")) || (ma ? "Yes" : ""), committee: degree && yes(d.HasDocComm) ? "Yes" : "",
+                genExam: cand ? dateQtr(m.candDate) || "Yes" : "", finalExam: qtrOf(awarded), phd: qtrOf(awarded) || qtrOf(uwDegreeLine(s, "phd")),
+                credits800: n800 === null || (!n800 && !cand) ? "" : n800, step: cand ? 3 : ma ? 2 : 0, terms: s.terms || {}
+            };
+        }
+        /* Labels and column headers MyGradMod knows, read loosely (case, spacing and a trailing colon don't matter). */
+        var XL_FIELDS = [
+            [/^(student )?name$|^full name$/, "name"], [/^last name$/, "lastName"], [/^first name$/, "firstName"],
+            [/^student (no\.?|number|id|#)$/, "sid"], [/^(uw )?e-?mail$/, "email"], [/^net ?id$/, "netid"],
+            [/^program$/, "program"], [/^degree title$/, "degreeTitle"], [/^new \(n\) ?\/ ?returning \(r\)( student)?$/, "newRet"],
+            [/^(qtr|quarter) entered$/, "entered"], [/^(entering class|cohort)$/, "cohort"], [/^(advisor|advisor ?\/ ?chair|dissertation chair)$/, "advisor"],
+            [/^(ase|pdta) level$/, "step"], [/^ma awarded( \(qtr\))?$/, "ma"], [/^(supervisory|doctoral) committee( est\.?| \(qtr est\.?\))?$/, "committee"],
+            [/^general exam( passed)?( \(qtr\))?$/, "genExam"], [/^final exam( passed)?( \(qtr\))?$/, "finalExam"], [/^ph\.?d\.? awarded( \(qtr\))?$/, "phd"],
+            [/^dissertation credits\b.*\b800\b/, "credits800"], [/^enroll(ment)? confirm(ation|ed)? (aut|win|spr|sum)[a-z]* ?'?(\d{2}|\d{4})$/, "term"]
+        ];
+        function xlField(label){
+            var t = String(label || "").replace(/\s+/g, " ").trim().toLowerCase().replace(/\s*:$/, "");
+            for(var i = 0; i < XL_FIELDS.length; i++){ var m = t.match(XL_FIELDS[i][0]); if(m) return { key: XL_FIELDS[i][1], m: m, text: t }; }
+            return null;
+        }
+        function xlValue(f, v){
+            /* "PDTA Level" takes the codes its salary lookup uses (PDTA, PDTA1, PDTA2); any other label, plain words. */
+            if(f.key === "step") return !v.step ? "" : /pdta/.test(f.text) ? ["PDTA", "PDTA1", "PDTA2"][v.step - 1] : ["Pre-master’s", "Post-master’s", "Candidate"][v.step - 1];
+            if(f.key === "term"){
+                var y = +f.m[4], t = v.terms[(y < 100 ? y + 2000 : y) + "-" + { win: 1, spr: 2, sum: 3, aut: 4 }[f.m[3]]];
+                return t ? t.status + (+t.credits ? " · " + t.credits + " cr" : "") : "";
+            }
+            return v[f.key];
+        }
+        var XL = (function(){
+            var NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main", RNS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+                PNS = "http://schemas.openxmlformats.org/package/2006/relationships", CNS = "http://schemas.openxmlformats.org/package/2006/content-types";
+            var CRC = new Uint32Array(256);
+            for(var n = 0; n < 256; n++){ var c = n; for(var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; CRC[n] = c >>> 0; }
+            function crc32(u8){ var c = 0xFFFFFFFF; for(var i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+            function pipe(u8, stream){ return new Response(new Blob([u8]).stream().pipeThrough(stream)).arrayBuffer().then(function(b){ return new Uint8Array(b); }); }
+            /* The zip: each part's compressed bytes, from the central directory. Parts not changed are written back as they were. */
+            function open(buf){
+                var u8 = new Uint8Array(buf), dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), end = -1, pkg = { parts: {}, order: [], text: {} };
+                for(var i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) if(dv.getUint32(i, true) === 0x06054b50){ end = i; break; }
+                if(end < 0) throw new Error("This isn’t an Excel (.xlsx) file.");
+                for(var k = 0, off = dv.getUint32(end + 16, true), count = dv.getUint16(end + 10, true); k < count; k++){
+                    if(dv.getUint32(off, true) !== 0x02014b50) throw new Error("This Excel file looks damaged.");
+                    var nlen = dv.getUint16(off + 28, true), local = dv.getUint32(off + 42, true), csize = dv.getUint32(off + 20, true);
+                    var start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true), name = new TextDecoder().decode(u8.subarray(off + 46, off + 46 + nlen));
+                    pkg.parts[name] = { method: dv.getUint16(off + 10, true), crc: dv.getUint32(off + 16, true), usize: dv.getUint32(off + 24, true), raw: u8.subarray(start, start + csize) };
+                    pkg.order.push(name);
+                    off += 46 + nlen + dv.getUint16(off + 30, true) + dv.getUint16(off + 32, true);
+                }
+                return pkg;
+            }
+            function read(pkg, name){
+                if(name in pkg.text) return Promise.resolve(pkg.text[name]);
+                var p = pkg.parts[name];
+                if(!p) return Promise.resolve(null);
+                return (p.method === 8 ? pipe(p.raw, new DecompressionStream("deflate-raw")) : Promise.resolve(p.raw)).then(function(u8){ return new TextDecoder().decode(u8); });
+            }
+            function put(pkg, name, text){ if(!(name in pkg.parts) && !(name in pkg.text)) pkg.order.push(name); pkg.text[name] = text; }
+            function drop(pkg, name){ delete pkg.parts[name]; delete pkg.text[name]; pkg.order = pkg.order.filter(function(x){ return x !== name; }); }
+            function has(pkg, name){ return name in pkg.parts || name in pkg.text; }
+            function build(pkg){
+                var enc = new TextEncoder();
+                return Promise.all(pkg.order.map(function(name){
+                    if(!(name in pkg.text)) return Promise.resolve({ name: name, p: pkg.parts[name] });
+                    var data = enc.encode(pkg.text[name]), crc = crc32(data), packed;
+                    try { packed = pipe(data, new CompressionStream("deflate-raw")).then(function(raw){ return { method: 8, raw: raw }; }); }
+                    catch(e){ packed = Promise.resolve({ method: 0, raw: data }); }
+                    return packed.then(function(z){ return { name: name, p: { method: z.method, crc: crc, usize: data.length, raw: z.raw } }; });
+                })).then(function(entries){
+                    var chunks = [], central = [], offset = 0;
+                    entries.forEach(function(e){
+                        var nm = enc.encode(e.name), h = new DataView(new ArrayBuffer(30)), c = new DataView(new ArrayBuffer(46));
+                        h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, e.p.method, true); h.setUint16(12, 0x21, true);
+                        h.setUint32(14, e.p.crc, true); h.setUint32(18, e.p.raw.length, true); h.setUint32(22, e.p.usize, true); h.setUint16(26, nm.length, true);
+                        c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, e.p.method, true); c.setUint16(14, 0x21, true);
+                        c.setUint32(16, e.p.crc, true); c.setUint32(20, e.p.raw.length, true); c.setUint32(24, e.p.usize, true); c.setUint16(28, nm.length, true); c.setUint32(42, offset, true);
+                        chunks.push(h.buffer, nm, e.p.raw);
+                        central.push(c.buffer, nm);
+                        offset += 30 + nm.length + e.p.raw.length;
+                    });
+                    var size = central.reduce(function(t, x){ return t + x.byteLength; }, 0), z = new DataView(new ArrayBuffer(22));
+                    z.setUint32(0, 0x06054b50, true); z.setUint16(8, entries.length, true); z.setUint16(10, entries.length, true); z.setUint32(12, size, true); z.setUint32(16, offset, true);
+                    return new Blob(chunks.concat(central, [z.buffer]), { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+                });
+            }
+            function parse(s){ var d = new DOMParser().parseFromString(s, "application/xml"); if(d.getElementsByTagName("parsererror").length) throw new Error("MyGradMod couldn’t read part of this Excel file."); return d; }
+            function ser(d){ return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + new XMLSerializer().serializeToString(d).replace(/^<\?xml[^>]*\?>\s*/, ""); }
+            function kids(el, name){ return el ? Array.prototype.filter.call(el.childNodes, function(x){ return x.nodeType === 1 && x.localName === name; }) : []; }
+            function first(doc, name){ return doc.getElementsByTagNameNS(NS, name)[0] || null; }
+            function all(doc){ return Array.prototype.slice.call(doc.getElementsByTagName("*")); }
+            function dirOf(path){ return path.slice(0, path.lastIndexOf("/") + 1); }
+            function resolve(dir, target){
+                if(target.charAt(0) === "/") return target.slice(1);
+                var out = [];
+                (dir + target).split("/").forEach(function(p){ if(p === "..") out.pop(); else if(p !== ".") out.push(p); });
+                return out.join("/");
+            }
+            function relsPath(path){ return dirOf(path) + "_rels/" + path.slice(path.lastIndexOf("/") + 1) + ".rels"; }
+            function colNum(s){ var n = 0; for(var i = 0; i < s.length; i++) n = n * 26 + s.charCodeAt(i) - 64; return n; }
+            function colName(n){ var s = ""; while(n > 0){ var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - 1 - m) / 26; } return s; }
+            function at(ref){ var m = /^([A-Z]+)(\d+)$/.exec(ref || ""); return m ? { c: colNum(m[1]), r: +m[2] } : null; }
+            function strings(doc){
+                return kids(doc.documentElement, "si").map(function(si){
+                    return Array.prototype.filter.call(si.getElementsByTagNameNS(NS, "t"), function(t){ return t.parentNode.localName !== "rPh"; }).map(function(t){ return t.textContent; }).join("");
+                });
+            }
+            function textIn(c, ss){
+                var t = c.getAttribute("t"), v = kids(c, "v")[0];
+                if(t === "s") return v ? ss[+v.textContent] || "" : "";
+                if(t === "inlineStr") return Array.prototype.map.call(c.getElementsByTagNameNS(NS, "t"), function(x){ return x.textContent; }).join("");
+                return v ? v.textContent : "";
+            }
+            function grid(doc){
+                var g = { sd: first(doc, "sheetData"), rows: {}, cells: {} };
+                kids(g.sd, "row").forEach(function(row){ g.rows[row.getAttribute("r")] = row; kids(row, "c").forEach(function(c){ g.cells[c.getAttribute("r")] = c; }); });
+                return g;
+            }
+            function cellAt(g, ref){
+                if(g.cells[ref]) return g.cells[ref];
+                var p = at(ref), doc = g.sd.ownerDocument, row = g.rows[p.r];
+                if(!row){
+                    row = doc.createElementNS(NS, "row");
+                    row.setAttribute("r", p.r);
+                    g.sd.insertBefore(row, kids(g.sd, "row").filter(function(x){ return +x.getAttribute("r") > p.r; })[0] || null);
+                    g.rows[p.r] = row;
+                }
+                var c = doc.createElementNS(NS, "c");
+                c.setAttribute("r", ref);
+                row.insertBefore(c, kids(row, "c").filter(function(x){ return at(x.getAttribute("r")).c > p.c; })[0] || null);
+                return (g.cells[ref] = c);
+            }
+            /* A cell's value: a number, text (inline, so the shared string table is left alone) or a formula. */
+            function setCell(c, v, formula){
+                while(c.firstChild) c.removeChild(c.firstChild);
+                c.removeAttribute("t");
+                if(c.parentNode) c.parentNode.removeAttribute("spans");
+                var doc = c.ownerDocument, el;
+                if(formula){ el = doc.createElementNS(NS, "f"); el.textContent = formula; c.appendChild(el); return; }
+                if(v === "" || v === null || v === undefined) return;
+                if(typeof v === "number"){ el = doc.createElementNS(NS, "v"); el.textContent = String(v); c.appendChild(el); return; }
+                c.setAttribute("t", "inlineStr");
+                var is = doc.createElementNS(NS, "is"), t = doc.createElementNS(NS, "t");
+                t.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
+                t.textContent = String(v);
+                is.appendChild(t);
+                c.appendChild(is);
+            }
+            /* A formula moved by dr rows and dc columns: relative references move, $-fixed ones and text in quotes don't. */
+            function shift(formula, dr, dc){
+                return formula.replace(/("(?:[^"]|"")*"|'(?:[^']|'')*')|(?<![A-Za-z0-9_.$])(\$?)([A-Z]{1,3})(\$?)(\d+)(?![\d(A-Za-z_!])/g, function(all, quoted, cAbs, col, rAbs, row){
+                    if(quoted) return all;
+                    return cAbs + (cAbs ? col : colName(colNum(col) + dc)) + rAbs + (rAbs ? row : +row + dr);
+                });
+            }
+            function labelsIn(doc, ss){
+                var g = grid(doc), out = [];
+                Object.keys(g.cells).forEach(function(ref){
+                    var c = g.cells[ref], t = kids(c, "f").length ? "" : textIn(c, ss), f = t && xlField(t);
+                    if(f) out.push({ ref: ref, text: t, f: f });
+                });
+                return out;
+            }
+            /* A header row: three or more names MyGradMod knows in one row, one of them a name column. */
+            function headerIn(labels){
+                var rows = {};
+                labels.forEach(function(l){ if(/:\s*$/.test(l.text)) return; var r = at(l.ref).r; (rows[r] = rows[r] || []).push(l); });
+                var r = Object.keys(rows).map(Number).sort(function(a, b){ return a - b; }).filter(function(r){
+                    return rows[r].length >= 3 && rows[r].some(function(l){ return l.f.key === "name" || l.f.key === "lastName"; });
+                })[0];
+                return r ? { row: r, labels: rows[r] } : null;
+            }
+            /* The workbook, its sheets, and the first sheet laid out as a header row (rows) or as one student's sheet (tabs). */
+            function layout(pkg){
+                var L = {};
+                return read(pkg, "_rels/.rels").then(function(t){
+                    var rel = t && kids(parse(t).documentElement, "Relationship").filter(function(r){ return /\/officeDocument$/.test(r.getAttribute("Type")); })[0];
+                    L.wbPath = rel ? resolve("", rel.getAttribute("Target")) : "xl/workbook.xml";
+                    L.wbRelsPath = relsPath(L.wbPath);
+                    return Promise.all([read(pkg, L.wbPath), read(pkg, L.wbRelsPath), read(pkg, "[Content_Types].xml")]);
+                }).then(function(r){
+                    if(!r[0] || !r[1] || !r[2]) throw new Error("This isn’t an Excel workbook MyGradMod can read.");
+                    L.wb = parse(r[0]); L.wbRels = parse(r[1]); L.ct = parse(r[2]);
+                    var rels = kids(L.wbRels.documentElement, "Relationship"), dir = dirOf(L.wbPath);
+                    var ssRel = rels.filter(function(x){ return /\/sharedStrings$/.test(x.getAttribute("Type")); })[0];
+                    L.sheets = kids(first(L.wb, "sheets"), "sheet").map(function(el){
+                        var id = el.getAttributeNS(RNS, "id"), rel = rels.filter(function(x){ return x.getAttribute("Id") === id && /\/worksheet$/.test(x.getAttribute("Type")); })[0];
+                        return { el: el, name: el.getAttribute("name"), target: rel ? rel.getAttribute("Target") : "", path: rel ? resolve(dir, rel.getAttribute("Target")) : "" };
+                    });
+                    return Promise.all([ssRel ? read(pkg, resolve(dir, ssRel.getAttribute("Target"))) : null].concat(L.sheets.map(function(s){ return s.path ? read(pkg, s.path) : null; })));
+                }).then(function(r){
+                    L.ss = r[0] ? strings(parse(r[0])) : [];
+                    L.texts = r.slice(1);
+                    for(var i = 0; i < L.sheets.length && !L.mode; i++){
+                        if(!L.texts[i]) continue;
+                        var doc = parse(L.texts[i]), labels = labelsIn(doc, L.ss), header = headerIn(labels);
+                        if(header){ L.mode = "rows"; L.header = header; }
+                        else if(labels.length >= 2 && labels.some(function(l){ return l.f.key === "name"; })) L.mode = "tabs";
+                        if(L.mode){ L.at = i; L.doc = doc; L.labels = header ? header.labels : labels; }
+                    }
+                    if(!L.mode) throw new Error("MyGradMod found no labels it knows in this file. It needs a “Name” column header (a row per student) or a “Name:” label (a sheet per student).");
+                    return L;
+                });
+            }
+            /* Rows: every row below the header is replaced, one per student. */
+            function fillRows(pkg, L, list){
+                var doc = L.doc, g = grid(doc), hr = L.header.row, cols = {}, shared = {}, colStyle = {}, map = {}, filled = {};
+                kids(first(doc, "cols"), "col").forEach(function(c){ if(c.getAttribute("style")) for(var i = +c.getAttribute("min"); i <= +c.getAttribute("max"); i++) colStyle[i] = c.getAttribute("style"); });
+                var below = Object.keys(g.rows).map(Number).filter(function(r){ return r > hr; }).sort(function(a, b){ return a - b; });
+                below.forEach(function(r){ kids(g.rows[r], "c").forEach(function(c){ var f = kids(c, "f")[0]; if(f && f.getAttribute("t") === "shared" && f.textContent) shared[f.getAttribute("si")] = { text: f.textContent, at: at(c.getAttribute("r")) }; }); });
+                below.forEach(function(r){
+                    kids(g.rows[r], "c").forEach(function(c){
+                        var p = at(c.getAttribute("r")), col = cols[p.c] || (cols[p.c] = {}), f = kids(c, "f")[0];
+                        if(r === hr + 1 && c.getAttribute("s")) col.style = c.getAttribute("s");
+                        if(!f || col.formula || f.getAttribute("t") === "array") return;
+                        var src = f.textContent ? { text: f.textContent, at: p } : shared[f.getAttribute("si")];
+                        if(src) col.formula = { text: shift(src.text, p.r - src.at.r, p.c - src.at.c), r: p.r };
+                    });
+                    g.sd.removeChild(g.rows[r]);
+                });
+                L.header.labels.forEach(function(l){ map[at(l.ref).c] = l; });
+                var maxCol = Math.max.apply(null, [1].concat(Object.keys(cols).map(Number), Object.keys(map).map(Number)));
+                list.forEach(function(v, i){
+                    var r = hr + 1 + i, row = doc.createElementNS(NS, "row");
+                    row.setAttribute("r", r);
+                    g.sd.appendChild(row);
+                    for(var c = 1; c <= maxCol; c++){
+                        var col = cols[c] || {}, l = map[c], val = l ? xlValue(l.f, v) : "", style = col.style || colStyle[c], hasVal = val !== "" && val !== null && val !== undefined;
+                        if(!hasVal && !col.formula && !style) continue;
+                        var cell = doc.createElementNS(NS, "c");
+                        cell.setAttribute("r", colName(c) + r);
+                        if(style) cell.setAttribute("s", style);
+                        row.appendChild(cell);
+                        if(hasVal){ setCell(cell, val); filled[l.text.replace(/\s+/g, " ").trim()] = true; }
+                        else if(col.formula) setCell(cell, null, shift(col.formula.text, r - col.formula.r, 0));
+                    }
+                });
+                var dim = first(doc, "dimension"), m = dim && /:([A-Z]+)\d+$/.exec(dim.getAttribute("ref") || "");
+                if(m) dim.setAttribute("ref", dim.getAttribute("ref").replace(/:([A-Z]+)\d+$/, ":" + m[1] + (hr + Math.max(list.length, 1))));
+                var path = L.sheets[L.at].path;
+                put(pkg, path, ser(doc));
+                return pruneComments(pkg, path, hr).then(function(){ return Object.keys(filled); });
+            }
+            /* Comments (and their tasks) on rows that were replaced; header comments stay. */
+            function pruneComments(pkg, path, hr){
+                var removed = {};
+                return read(pkg, relsPath(path)).then(function(t){
+                    if(!t) return;
+                    return Promise.all(kids(parse(t).documentElement, "Relationship").map(function(rel){
+                        var type = rel.getAttribute("Type"), part = resolve(dirOf(path), rel.getAttribute("Target"));
+                        if(!/\/(comments|threadedComment|vmlDrawing)$/.test(type)) return null;
+                        return read(pkg, part).then(function(x){
+                            if(x === null) return;
+                            if(/vmlDrawing$/.test(type)) return put(pkg, part, x.replace(/<v:shape\b[^>]*>[\s\S]*?<\/v:shape>/g, function(sh){ var m = /<x:Row>\s*(\d+)\s*<\/x:Row>/.exec(sh); return m && +m[1] >= hr ? "" : sh; }));
+                            var d = parse(x), changed = false;
+                            all(d).forEach(function(el){
+                                if(!/^(comment|threadedComment)$/.test(el.localName) || !el.getAttribute("ref") || !el.parentNode) return;
+                                var p = at(el.getAttribute("ref").split(":")[0]);
+                                if(!p || p.r <= hr) return;
+                                if(el.getAttribute("id")) removed[el.getAttribute("id")] = true;
+                                el.parentNode.removeChild(el);
+                                changed = true;
+                            });
+                            if(changed) put(pkg, part, ser(d));
+                        });
+                    }));
+                }).then(function(){
+                    if(!Object.keys(removed).length) return;
+                    return Promise.all(pkg.order.filter(function(n){ return /^xl\/documenttasks\/[^\/]+\.xml$/i.test(n); }).map(function(n){
+                        return read(pkg, n).then(function(x){
+                            var d = parse(x), changed = false;
+                            all(d).filter(function(el){ return el.localName === "Task"; }).forEach(function(task){
+                                var anchor = all(task).filter(function(el){ return el.localName === "Comment"; })[0];
+                                if(anchor && removed[anchor.getAttribute("id")]){ task.parentNode.removeChild(task); changed = true; }
+                            });
+                            if(changed) put(pkg, n, ser(d));
+                        });
+                    }));
+                });
+            }
+            function quoteSheet(n){ return "'" + n.replace(/'/g, "''") + "'"; }
+            function tabName(name, used){
+                var base = String(name || "").replace(/[\\\/?*\[\]:]/g, "-").replace(/^'+|'+$/g, "").trim().slice(0, 31) || "Student", out = base, k = 2;
+                while(used[out.toLowerCase()]){ var suffix = " (" + k++ + ")"; out = base.slice(0, 31 - suffix.length) + suffix; }
+                used[out.toLowerCase()] = true;
+                return out;
+            }
+            function fillLabels(doc, ss, v, filled){
+                var g = grid(doc), merges = kids(first(doc, "mergeCells"), "mergeCell").map(function(m){ var p = m.getAttribute("ref").split(":"); return { a: at(p[0]), b: at(p[1] || p[0]) }; });
+                labelsIn(doc, ss).forEach(function(l){
+                    var val = xlValue(l.f, v);
+                    if(val === "" || val === null || val === undefined) return;
+                    if(/:\s*$/.test(l.text)) setCell(g.cells[l.ref], l.text + (/\s$/.test(l.text) ? "" : " ") + val);
+                    else {
+                        var p = at(l.ref), m = merges.filter(function(x){ return x.a && x.a.r === p.r && x.a.c === p.c; })[0], ref = colName((m ? m.b.c : p.c) + 1) + p.r, target = g.cells[ref];
+                        if(target && (kids(target, "f").length || xlField(textIn(target, ss)))) return;
+                        setCell(target || cellAt(g, ref), val);
+                    }
+                    filled[l.text.replace(/\s+/g, " ").replace(/\s*:?\s*$/, "")] = true;
+                });
+            }
+            /* Tabs: the template sheet becomes the first student's tab, and each other student gets a copy right after it. */
+            function fillTabs(pkg, L, list){
+                var src = L.sheets[L.at], srcText = L.texts[L.at], filled = {}, used = {}, maxNum = 0, maxId = 0, maxRid = 0;
+                L.sheets.forEach(function(s, i){ if(i !== L.at) used[s.name.toLowerCase()] = true; maxId = Math.max(maxId, +s.el.getAttribute("sheetId") || 0); });
+                pkg.order.forEach(function(n){ var m = /sheet(\d+)\.xml$/.exec(n); if(m && n.indexOf(dirOf(src.path)) === 0) maxNum = Math.max(maxNum, +m[1]); });
+                kids(L.wbRels.documentElement, "Relationship").forEach(function(r){ var m = /^rId(\d+)$/.exec(r.getAttribute("Id")); if(m) maxRid = Math.max(maxRid, +m[1]); });
+                var names = list.map(function(v){ return tabName(v.name, used); });
+                return read(pkg, relsPath(src.path)).then(function(relsText){
+                    var after = src.el, oldName = src.name;
+                    list.forEach(function(v, i){
+                        var doc = i ? parse(srcText) : L.doc;
+                        fillLabels(doc, L.ss, v, filled);
+                        if(!i){ put(pkg, src.path, ser(doc)); return; }
+                        kids(first(doc, "sheetViews"), "sheetView").forEach(function(sv){ sv.removeAttribute("tabSelected"); });
+                        doc.documentElement.removeAttributeNS("http://schemas.microsoft.com/office/spreadsheetml/2014/revision", "uid");
+                        var file = "sheet" + (++maxNum) + ".xml", path = dirOf(src.path) + file, rid = "rId" + (++maxRid);
+                        if(relsText) copyRels(pkg, L, relsText, src.path, path, doc);
+                        put(pkg, path, ser(doc));
+                        var el = L.wb.createElementNS(NS, "sheet");
+                        el.setAttribute("name", names[i]);
+                        el.setAttribute("sheetId", ++maxId);
+                        el.setAttributeNS(RNS, "r:id", rid);
+                        after.parentNode.insertBefore(el, after.nextSibling);
+                        after = el;
+                        var rel = L.wbRels.createElementNS(PNS, "Relationship");
+                        rel.setAttribute("Id", rid); rel.setAttribute("Type", RNS + "/worksheet"); rel.setAttribute("Target", src.target.replace(/[^\/]*$/, file));
+                        L.wbRels.documentElement.appendChild(rel);
+                        override(L, "/" + path, "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml");
+                    });
+                    /* The template sheet takes the first student's name, and names and tab indexes that pointed past it move along. */
+                    src.el.setAttribute("name", names[0]);
+                    var added = list.length - 1;
+                    kids(first(L.wb, "definedNames"), "definedName").forEach(function(dn){
+                        var ls = dn.getAttribute("localSheetId");
+                        if(ls !== null && +ls > L.at) dn.setAttribute("localSheetId", +ls + added);
+                        dn.textContent = dn.textContent.split(quoteSheet(oldName) + "!").join(quoteSheet(names[0]) + "!");
+                        if(/^[A-Za-z_][A-Za-z0-9_.]*$/.test(oldName)) dn.textContent = dn.textContent.replace(new RegExp("(^|[^A-Za-z0-9_.'])" + oldName.replace(/\./g, "\\.") + "!", "g"), "$1" + quoteSheet(names[0]) + "!");
+                    });
+                    kids(first(L.wb, "bookViews"), "workbookView").forEach(function(wv){ ["activeTab", "firstSheet"].forEach(function(a){ var x = wv.getAttribute(a); if(x !== null && +x > L.at) wv.setAttribute(a, +x + added); }); });
+                    return Object.keys(filled);
+                });
+            }
+            function override(L, part, type){
+                var o = L.ct.createElementNS(CNS, "Override");
+                o.setAttribute("PartName", part); o.setAttribute("ContentType", type);
+                L.ct.documentElement.appendChild(o);
+            }
+            /* A copied tab keeps its print settings (a copy of the file each); anything else the template sheet links to
+               (comments, drawings, tables) stays on the first tab only. */
+            function copyRels(pkg, L, relsText, srcPath, path, doc){
+                var d = parse(relsText);
+                kids(d.documentElement, "Relationship").forEach(function(rel){
+                    var type = rel.getAttribute("Type"), target = rel.getAttribute("Target"), part = resolve(dirOf(srcPath), target);
+                    if(/\/printerSettings$/.test(type) && pkg.parts[part]){
+                        var ext = part.slice(part.lastIndexOf(".")), k = 1;
+                        while(has(pkg, dirOf(part) + "printerSettings" + k + ext)) k++;
+                        var copy = dirOf(part) + "printerSettings" + k + ext;
+                        pkg.parts[copy] = pkg.parts[part];
+                        pkg.order.push(copy);
+                        rel.setAttribute("Target", target.replace(/[^\/]*$/, "printerSettings" + k + ext));
+                        kids(L.ct.documentElement, "Override").forEach(function(o){ if(o.getAttribute("PartName") === "/" + part) override(L, "/" + copy, o.getAttribute("ContentType")); });
+                        return;
+                    }
+                    if(rel.getAttribute("TargetMode") === "External") return;
+                    all(doc).forEach(function(el){
+                        if(el.getAttributeNS(RNS, "id") !== rel.getAttribute("Id") || !el.parentNode) return;
+                        var parent = el.parentNode;
+                        parent.removeChild(el);
+                        if(parent !== doc.documentElement && !Array.prototype.some.call(parent.childNodes, function(x){ return x.nodeType === 1; })) parent.parentNode.removeChild(parent);
+                    });
+                    rel.parentNode.removeChild(rel);
+                });
+                put(pkg, relsPath(path), ser(d));
+            }
+            /* Excel's calculation chain lists formula cells, so it would be out of date: dropped, and Excel recalculates on open. */
+            function finish(pkg, L){
+                kids(L.wbRels.documentElement, "Relationship").filter(function(r){ return /\/calcChain$/.test(r.getAttribute("Type")); }).forEach(function(r){
+                    var part = resolve(dirOf(L.wbPath), r.getAttribute("Target"));
+                    drop(pkg, part);
+                    r.parentNode.removeChild(r);
+                    kids(L.ct.documentElement, "Override").forEach(function(o){ if(o.getAttribute("PartName") === "/" + part) o.parentNode.removeChild(o); });
+                });
+                var calc = first(L.wb, "calcPr");
+                if(calc) calc.setAttribute("fullCalcOnLoad", "1");
+                put(pkg, L.wbPath, ser(L.wb));
+                put(pkg, L.wbRelsPath, ser(L.wbRels));
+                put(pkg, "[Content_Types].xml", ser(L.ct));
+            }
+            return {
+                /* What a template is: its layout, the sheet used, and the labels MyGradMod will fill. */
+                detect: function(buf){
+                    return Promise.resolve().then(function(){ return layout(open(buf)); }).then(function(L){
+                        return { mode: L.mode, sheet: L.sheets[L.at].name, labels: L.labels.map(function(l){ return l.text.replace(/\s+/g, " ").replace(/\s*:?\s*$/, ""); }) };
+                    });
+                },
+                /* A filled copy: { blob, mode, filled: labels given a value }. */
+                fill: function(buf, list){
+                    var pkg, L;
+                    return Promise.resolve().then(function(){ pkg = open(buf); return layout(pkg); }).then(function(l){
+                        L = l;
+                        return L.mode === "rows" ? fillRows(pkg, L, list) : fillTabs(pkg, L, list);
+                    }).then(function(filled){
+                        finish(pkg, L);
+                        return build(pkg).then(function(blob){ return { blob: blob, mode: L.mode, filled: filled }; });
+                    });
+                }
+            };
+        })();
+
+        /* Templates live in this browser (localStorage), as the file the user picked; the last one used is preselected. */
+        var XT_KEY = "mygradmod-export-templates", xp = { list: [], picked: {} };
+        function xpTemplates(){ try { var t = JSON.parse(localStorage.getItem(XT_KEY) || "[]"); return Array.isArray(t) ? t : []; } catch(e){ return []; } }
+        function xpSave(list){ try { localStorage.setItem(XT_KEY, JSON.stringify(list)); return true; } catch(e){ return false; } }
+        function xpChosen(){ var list = xpTemplates(), id = null; try { id = localStorage.getItem(XT_KEY + "-last"); } catch(e){} return list.filter(function(t){ return t.id === id; })[0] || list[0] || null; }
+        function toB64(u8){ var s = ""; for(var i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+        function fromB64(b){ var s = atob(b), u8 = new Uint8Array(s.length); for(var i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i); return u8; }
+        function xpMsg(html, bad){ var el = document.getElementById("xp-msg"); el.innerHTML = html; el.classList.toggle("err", !!bad); }
+        /* The students to choose from are the ones Students shows (its view, program and search), by entering class. */
+        function xpGroups(){
+            var by = {}, keys = [];
+            xp.list.forEach(function(s){ var k = s.cohort === null || s.nonDegree ? "other" : String(s.cohort); if(!by[k]){ by[k] = []; keys.push(k); } by[k].push(s); });
+            keys.sort(function(a, b){ return a === "other" ? 1 : b === "other" ? -1 : b - a; });
+            return keys.map(function(k){ return { key: k, label: k === "other" ? "No cohort" : classLabel(+k) + " · year " + (currentAY - k + 1), members: by[k] }; });
+        }
+        function xpPicked(){ var out = []; xpGroups().forEach(function(g){ g.members.forEach(function(s){ if(xp.picked[s.idx]) out.push(s); }); }); return out; }
+        function xpCount(){
+            var n = xpPicked().length;
+            document.getElementById("xp-count").textContent = n + " of " + xp.list.length;
+            document.getElementById("xp-go").disabled = !n || !xpChosen();
+        }
+        function xpRenderTemplates(){
+            var list = xpTemplates(), cur = xpChosen();
+            document.getElementById("xp-templates").innerHTML = list.length ? list.map(function(t){
+                return "<label class='xp-t' title='" + esc("Fills " + (t.labels || []).join(", ")) + "'><input type='radio' name='xp-t' value='" + esc(t.id) + "'" + (cur && cur.id === t.id ? " checked" : "") + ">"
+                    + "<span><b>" + esc(t.name) + "</b><span class='small'>" + (t.mode === "rows" ? "A row per student, in sheet “" : "A tab per student, copied from sheet “") + esc(t.sheet) + "”</span></span>"
+                    + "<button type='button' class='xp-rm' data-rm='" + esc(t.id) + "' title='Remove this template from this browser' aria-label='Remove " + esc(t.name) + "'>×</button></label>";
+            }).join("") : "<p class='small xp-empty'>No templates yet. Add the Excel file to fill: a sheet laid out for one student (each student gets a copy as their own tab), or a sheet with a header row and a row per student.</p>";
+            xpCount();
+        }
+        function xpRenderStudents(){
+            document.getElementById("xp-students").innerHTML = xpGroups().map(function(g){
+                return "<div class='xp-g'><button type='button' class='xp-gh' data-g='" + g.key + "' title='Check or uncheck this whole class'>" + esc(g.label) + "</button><div class='xp-gs'>" + g.members.map(function(s){
+                    return "<label class='xp-s'><input type='checkbox' data-xi='" + s.idx + "'" + (xp.picked[s.idx] ? " checked" : "") + "> " + esc(s.name) + "</label>";
+                }).join("") + "</div></div>";
+            }).join("") || "<p class='small'>No students in Students right now.</p>";
+            xpCount();
+        }
+        function closeExport(){ var back = document.getElementById("xp-back"); if(back) back.hidden = true; if(xp.from && xp.from.focus) xp.from.focus(); }
+        /* Opened from the Students bar with everyone Students shows checked, or from a student's row with just them. */
+        function openExport(only, from){
+            var back = document.getElementById("xp-back");
+            if(!back){
+                document.body.insertAdjacentHTML("beforeend", "<div id='xp-back' hidden><div id='xp' role='dialog' aria-modal='true' aria-labelledby='xp-title'>"
+                    + "<div class='xp-head'><span id='xp-title'>Export to Excel</span><button type='button' class='xp-x' aria-label='Close'>×</button></div>"
+                    + "<div class='xp-sec'><div class='xp-lab'>Template</div><div id='xp-templates'></div>"
+                    + "<label class='pill xp-add' title='Pick the Excel file to fill. It stays in this browser for next time and is never uploaded.'>Add a template…<input type='file' id='xp-file' accept='.xlsx'></label></div>"
+                    + "<div class='xp-sec xp-grow'><div class='xp-lab'>Students <span id='xp-count'></span><span class='xp-acts'><button type='button' data-xp='all'>All</button><button type='button' data-xp='none'>None</button></span></div><div id='xp-students'></div></div>"
+                    + "<div class='xp-foot'><p id='xp-msg' class='small' role='status'></p><button type='button' class='pill on' id='xp-go'>Export</button></div></div></div>");
+                back = document.getElementById("xp-back");
+                back.addEventListener("click", function(e){
+                    if(e.target === back || e.target.closest(".xp-x")) return closeExport();
+                    var rm = e.target.closest("[data-rm]"), act = e.target.closest("[data-xp]"), gh = e.target.closest("[data-g]");
+                    if(rm){
+                        e.preventDefault();
+                        xpSave(xpTemplates().filter(function(t){ return t.id !== rm.getAttribute("data-rm"); }));
+                        xpRenderTemplates();
+                    } else if(act){
+                        xp.picked = {};
+                        if(act.getAttribute("data-xp") === "all") xp.list.forEach(function(s){ xp.picked[s.idx] = true; });
+                        xpRenderStudents();
+                    } else if(gh){
+                        var members = xpGroups().filter(function(g){ return g.key === gh.getAttribute("data-g"); })[0].members, on = !members.every(function(s){ return xp.picked[s.idx]; });
+                        members.forEach(function(s){ if(on) xp.picked[s.idx] = true; else delete xp.picked[s.idx]; });
+                        xpRenderStudents();
+                    }
+                });
+                back.addEventListener("change", function(e){
+                    var t = e.target;
+                    if(t.name === "xp-t"){ try { localStorage.setItem(XT_KEY + "-last", t.value); } catch(err){} xpCount(); }
+                    else if(t.hasAttribute("data-xi")){ if(t.checked) xp.picked[t.getAttribute("data-xi")] = true; else delete xp.picked[t.getAttribute("data-xi")]; xpCount(); }
+                    else if(t.id === "xp-file" && t.files[0]) addTemplate(t.files[0], t);
+                });
+                document.getElementById("xp-go").addEventListener("click", runExport);
+            }
+            xp.from = from || null;
+            xp.list = visible();
+            xp.picked = {};
+            xp.list.forEach(function(s){ if(!only || only.indexOf(s.idx) !== -1) xp.picked[s.idx] = true; });
+            xpMsg("");
+            xpRenderTemplates();
+            xpRenderStudents();
+            back.hidden = false;
+            (xpChosen() ? document.getElementById("xp-go") : document.querySelector("#xp .xp-add")).focus();
+        }
+        function addTemplate(file, input){
+            xpMsg("Reading " + esc(file.name) + "…");
+            file.arrayBuffer().then(function(buf){
+                return XL.detect(buf).then(function(info){
+                    var list = xpTemplates().filter(function(t){ return t.name !== file.name; }), t = { id: String(Date.now()), name: file.name, mode: info.mode, sheet: info.sheet, labels: info.labels, data: toB64(new Uint8Array(buf)) };
+                    list.push(t);
+                    if(!xpSave(list)) throw new Error("this browser couldn’t keep it (its storage is full or blocked)");
+                    try { localStorage.setItem(XT_KEY + "-last", t.id); } catch(e){}
+                    xpRenderTemplates();
+                    xpMsg("Added " + esc(file.name) + ". It fills " + esc(info.labels.join(", ")) + ".");
+                });
+            }).catch(function(err){ xpMsg("Couldn’t add " + esc(file.name) + ": " + esc(err.message), true); }).then(function(){ input.value = ""; });
+        }
+        function runExport(){
+            var t = xpChosen(), picked = xpPicked(), go = document.getElementById("xp-go");
+            if(!t || !picked.length) return;
+            go.disabled = true;
+            xpMsg("Filling " + esc(t.name) + "…");
+            Promise.resolve().then(function(){ return XL.fill(fromB64(t.data), picked.map(exportValues)); }).then(function(out){
+                var day = new Date(), stamp = day.getFullYear() + "-" + ("0" + (day.getMonth() + 1)).slice(-2) + "-" + ("0" + day.getDate()).slice(-2);
+                var base = t.name.replace(/\.xlsx$/i, "").replace(/[\s_-]*(template|copy)\s*$/i, "").trim() || "MyGradMod export";
+                var name = (base + " - " + (picked.length === 1 ? picked[0].name : stamp)).replace(/[\\\/:*?"<>|]/g, "-") + ".xlsx";
+                var a = document.createElement("a");
+                a.href = URL.createObjectURL(out.blob);
+                a.download = name;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 10000);
+                var n = picked.length, unit = out.mode === "rows" ? (n === 1 ? " row" : " rows") : (n === 1 ? " tab" : " tabs");
+                xpMsg("Downloaded <b>" + esc(name) + "</b>: " + n + unit + (out.filled.length ? ", with " + esc(out.filled.join(", ")) + " filled in" : ", but MyGrad had nothing for its labels") + ". It holds student records: keep it where UW allows them.");
+            }).catch(function(err){ xpMsg("Couldn’t export: " + esc(err.message), true); }).then(xpCount);
+        }
+        document.getElementById("export-open").addEventListener("click", function(){ openExport(null, this); });
+
         render();
     }
 })();
