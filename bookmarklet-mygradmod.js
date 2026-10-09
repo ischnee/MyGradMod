@@ -1699,7 +1699,10 @@ javascript:(function(){
                 ma: qtrOf(granted) || qtrOf(uwDegreeLine(s, "ma")) || (ma ? "Yes" : ""), committee: degree && yes(d.HasDocComm) ? "Yes" : "",
                 genExam: cand ? dateQtr(m.candDate) || "Yes" : "", finalExam: qtrOf(awarded),
                 genDate: m.candDate || examDate(genLines[genLines.length - 1]), finalDate: examDate(finalLines[finalLines.length - 1]), phd: qtrOf(awarded) || qtrOf(uwDegreeLine(s, "phd")),
-                credits800: n800 === null || (!n800 && !cand) ? "" : n800, step: cand ? 3 : ma ? 2 : 0, terms: s.terms || {}
+                credits800: n800 === null || (!n800 && !cand) ? "" : n800, step: cand ? 3 : ma ? 2 : 0, terms: s.terms || {},
+                /* This quarter's appointment, from MyGrad's TA and fellowship fields (the dashboard's "Funding now"): MyGrad's
+                   own short code (TA, RA...) or "Fellowship". */
+                ase: !s.d ? "" : String(d.HasTA || "").trim() ? (/^[a-z]{1,4}$/i.test(String(d.HasTA).trim()) ? String(d.HasTA).trim().toUpperCase() : "TA") : String(d.HasFellow || "").trim() ? "Fellowship" : ""
             };
             /* The transcript, from the student's first quarter in the program on: the course table lists coursework (numbered
                below 600, so not independent study, thesis or dissertation credits), in quarter order; the totals count it all. */
@@ -1739,7 +1742,7 @@ javascript:(function(){
             [/^general exam( passed)?( \(qtr\))?$/, "genExam"], [/^final exam( passed)?( \(qtr\))?$/, "finalExam"],
             [/^general exam scheduled( \(date\))?$/, "genDate"], [/^final exam scheduled( \(date\))?$/, "finalDate"], [/^ph\.?d\.? awarded( \(qtr\))?$/, "phd"],
             [/^dissertation credits\b.*\b800\b/, "credits800"], [/^teaching topics\b.*\b504\b/, "c504"], [/^courses completed in uw philosophy\b/, "phil30"],
-            [/^total credits\b/, "totalCredits"], [/^credits numbered 500\b/, "credits500"], [/^numerically graded credits\b/, "numeric400"], [/^phil 502 ?\/ ?503\b/, "w502"], [/^logic requirement$/, "logic"], [/^enroll(ment)? confirm(ation|ed)? (aut|win|spr|sum)[a-z]* ?'?(\d{2}|\d{4})$/, "term"]
+            [/^total credits\b/, "totalCredits"], [/^credits numbered 500\b/, "credits500"], [/^numerically graded credits\b/, "numeric400"], [/^phil 502 ?\/ ?503\b/, "w502"], [/^logic requirement$/, "logic"], [/^(aut|win|spr|sum)[a-z]* ?'?(\d{2}|\d{4}) ase$/, "ase"], [/^enroll(ment)? confirm(ation|ed)? (aut|win|spr|sum)[a-z]* ?'?(\d{2}|\d{4})$/, "term"]
         ];
         function xlField(label){
             var t = String(label || "").replace(/\s+/g, " ").trim().toLowerCase().replace(/\s*:$/, "");
@@ -1749,6 +1752,11 @@ javascript:(function(){
         function xlValue(f, v){
             /* "PDTA Level" takes the codes its salary lookup uses (PDTA, PDTA1, PDTA2); any other label, plain words. */
             if(f.key === "step") return !v.step ? "" : /pdta/.test(f.text) ? ["PDTA", "PDTA1", "PDTA2"][v.step - 1] : ["Pre-master’s", "Post-master’s", "Candidate"][v.step - 1];
+            /* "AUT26 ASE": filled for the current quarter only, the one MyGrad's funding fields describe. */
+            if(f.key === "ase"){
+                var ay = +f.m[2], code = { win: 1, spr: 2, sum: 3, aut: 4 }[f.m[1]], mo = now.getMonth(), cur = mo >= 8 ? 4 : mo <= 2 ? 1 : 2;
+                return (ay < 100 ? ay + 2000 : ay) === now.getFullYear() && code === cur ? v.ase : "";
+            }
             if(f.key === "term"){
                 var y = +f.m[4], t = v.terms[(y < 100 ? y + 2000 : y) + "-" + { win: 1, spr: 2, sum: 3, aut: 4 }[f.m[3]]];
                 return t ? t.status + (+t.credits ? " · " + t.credits + " cr" : "") : "";

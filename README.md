@@ -160,6 +160,7 @@ Fill your own Excel template with what MyGradMod knows about the students you pi
 | Courses completed in UW philosophy with 3.0 or higher | Graduate PHIL courses (400–599, not the 502–505 workshops and teaching courses) with a grade of 3.0 or more |
 | Total credits; Credits numbered 500 and above; Numerically graded credits, 400-599 (excluding 499) | Credit totals from the transcript since the student's first quarter, counting passing grades only (not W, I, NC and the like; numeric 0.7 or more) |
 | ASE Level, PDTA Level | The pay step MyGrad can show: candidate, or post-master's for a UW master's in the student's field. Left blank otherwise, since MyGrad doesn't know degrees from elsewhere. "PDTA Level" takes PDTA1 and PDTA2. |
+| AUT26 ASE (any quarter) | For the current quarter only: "TA" (or MyGrad's own code, such as RA) or "Fellowship", from MyGrad's funding fields (the dashboard's "Funding now") |
 | Enroll Confirmation AUT26 (any quarter) | The student's status (and credits) on that quarter's list, for the current and next quarters |
 
 Transcripts are read through the MyGrad tab, so keep it open on the By Quarter page while you export. Anything else in the template is left for you. The file opens on the sheet that was filled, and Excel recalculates formulas when it opens it.
