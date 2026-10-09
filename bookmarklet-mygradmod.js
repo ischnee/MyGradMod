@@ -1670,6 +1670,13 @@ javascript:(function(){
            courses (no grade yet) don't count yet. */
         function earned(c){ var g = String(c.grade || "").trim(), n = parseFloat(g); return c.credits !== null && !!g && !/^(w|hw|i|x|nc|ns|e|nf)$/i.test(g) && (isNaN(n) || n >= 0.7); }
         function graded(c){ return /^\d(\.\d+)?$/.test(String(c.grade || "").trim()); }
+        /* Philosophy's course lists, from the UW catalog's PhD and MA requirements (read Oct 8, 2026): the three distribution
+           areas (two courses each) and the courses designated as seminars. Basic logic is PHIL 120 or equivalent; the
+           department's MA page also accepts a graduate logic course passed with 3.0. */
+        var PHIL_AREAS = { 1: [419, 422, 426, 430, 431, 433, 436, 437, 438, 520, 522, 526],
+            2: [450, 453, 455, 459, 460, 463, 464, 466, 470, 471, 472, 473, 474, 479, 481, 482, 483, 486, 490, 550, 556, 560, 563, 564, 566, 570, 587],
+            3: [404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 440, 441, 442, 445, 446, 448, 449, 465, 467, 510, 514, 538, 540, 545, 565] };
+        var PHIL_SEMINARS = [510, 514, 520, 522, 526, 540, 545, 550, 556, 560, 563, 564, 565, 566, 570], PHIL_LOGIC = [470, 471, 472, 473, 474, 570];
         function exportValues(s, tr){
             var d = s.d || {}, m = s.ms || {}, legal = String(s.legalName || s.name || ""), comma = legal.indexOf(",");
             var granted = lines(d.MastersRequests).filter(function(l){ return /granted|awarded/i.test(l); })[0] || "";
@@ -1700,9 +1707,19 @@ javascript:(function(){
                 var from = a ? +a[2] * 4 + QI[a[1]] : s.cohort !== null && s.cohort !== undefined ? s.cohort * 4 + 2 : -Infinity;
                 var mine = tr.courses.filter(function(c){ return !c.q || c.q.idx >= from; }), sum = function(list){ return list.reduce(function(t, c){ return t + c.credits; }, 0); };
                 var phil = function(c, nums){ return c.dept === "PHIL" && nums.indexOf(c.num) !== -1 && earned(c); };
-                out.courses = mine.filter(function(c){ return c.num < 600; }).map(function(c, i){ return { c: c, i: i }; }).sort(function(x, y){ return ((x.c.q || {}).idx || 0) - ((y.c.q || {}).idx || 0) || x.i - y.i; }).map(function(x){ return x.c; });
+                /* Area and Sem? only for PHIL courses passed with 3.0 or better, so the template's own counts count what meets the
+                   requirement; each row's kind picks its color from the template's legend. */
+                var pass30 = function(c){ return earned(c) && graded(c) && parseFloat(c.grade) >= 3; };
+                out.courses = mine.filter(function(c){ return c.num < 600; }).map(function(c, i){ return { c: c, i: i }; }).sort(function(x, y){ return ((x.c.q || {}).idx || 0) - ((y.c.q || {}).idx || 0) || x.i - y.i; }).map(function(x){
+                    var c = x.c, phil = c.dept === "PHIL", good = phil && pass30(c), area = "";
+                    [1, 2, 3].forEach(function(a){ if(good && PHIL_AREAS[a].indexOf(c.num) !== -1) area = a; });
+                    return Object.assign({}, c, { area: area, sem: good && PHIL_SEMINARS.indexOf(c.num) !== -1 ? "Y" : "", pending: !String(c.grade || "").trim(),
+                        kind: !phil ? "" : c.num === 504 || c.num === 505 ? "teaching" : c.num === 502 || c.num === 503 ? "workshop" : PHIL_SEMINARS.indexOf(c.num) !== -1 ? "seminar" : "course" });
+                });
+                var logic = tr.courses.filter(function(c){ return c.dept === "PHIL" && ((c.num === 120 && earned(c)) || (PHIL_LOGIC.indexOf(c.num) !== -1 && pass30(c))); })[0];
+                out.logic = logic ? "PHIL " + logic.num + (logic.q ? ", " + logic.q.label : "") : "";
                 out.c504 = mine.filter(function(c){ return phil(c, [504, 505]); }).length;
-                out.phil30 = mine.filter(function(c){ return c.dept === "PHIL" && c.num < 600 && graded(c) && parseFloat(c.grade) >= 3; }).length;
+                out.phil30 = mine.filter(function(c){ return c.dept === "PHIL" && c.num >= 400 && c.num < 600 && [502, 503, 504, 505].indexOf(c.num) === -1 && pass30(c); }).length;
                 out.totalCredits = sum(mine.filter(earned));
                 out.credits500 = sum(mine.filter(function(c){ return earned(c) && c.num >= 500; }));
                 out.numeric400 = sum(mine.filter(function(c){ return earned(c) && graded(c) && c.num >= 400 && c.num <= 599 && c.num !== 499; }));
@@ -1721,7 +1738,7 @@ javascript:(function(){
             [/^general exam( passed)?( \(qtr\))?$/, "genExam"], [/^final exam( passed)?( \(qtr\))?$/, "finalExam"],
             [/^general exam scheduled( \(date\))?$/, "genDate"], [/^final exam scheduled( \(date\))?$/, "finalDate"], [/^ph\.?d\.? awarded( \(qtr\))?$/, "phd"],
             [/^dissertation credits\b.*\b800\b/, "credits800"], [/^teaching topics\b.*\b504\b/, "c504"], [/^courses completed in uw philosophy\b/, "phil30"],
-            [/^total credits\b/, "totalCredits"], [/^credits numbered 500\b/, "credits500"], [/^numerically graded credits\b/, "numeric400"], [/^phil 502 ?\/ ?503\b/, "w502"], [/^enroll(ment)? confirm(ation|ed)? (aut|win|spr|sum)[a-z]* ?'?(\d{2}|\d{4})$/, "term"]
+            [/^total credits\b/, "totalCredits"], [/^credits numbered 500\b/, "credits500"], [/^numerically graded credits\b/, "numeric400"], [/^phil 502 ?\/ ?503\b/, "w502"], [/^logic requirement$/, "logic"], [/^enroll(ment)? confirm(ation|ed)? (aut|win|spr|sum)[a-z]* ?'?(\d{2}|\d{4})$/, "term"]
         ];
         function xlField(label){
             var t = String(label || "").replace(/\s+/g, " ").trim().toLowerCase().replace(/\s*:$/, "");
@@ -1891,15 +1908,18 @@ javascript:(function(){
                     if(!r[0] || !r[1] || !r[2]) throw new Error("This isn’t an Excel workbook MyGradMod can read.");
                     L.wb = parse(r[0]); L.wbRels = parse(r[1]); L.ct = parse(r[2]);
                     var rels = kids(L.wbRels.documentElement, "Relationship"), dir = dirOf(L.wbPath);
-                    var ssRel = rels.filter(function(x){ return /\/sharedStrings$/.test(x.getAttribute("Type")); })[0];
+                    var ssRel = rels.filter(function(x){ return /\/sharedStrings$/.test(x.getAttribute("Type")); })[0], stRel = rels.filter(function(x){ return /\/styles$/.test(x.getAttribute("Type")); })[0];
+                    L.stylesPath = stRel ? resolve(dir, stRel.getAttribute("Target")) : null;
+                    L.fillCache = {};
                     L.sheets = kids(first(L.wb, "sheets"), "sheet").map(function(el){
                         var id = el.getAttributeNS(RNS, "id"), rel = rels.filter(function(x){ return x.getAttribute("Id") === id && /\/worksheet$/.test(x.getAttribute("Type")); })[0];
                         return { el: el, name: el.getAttribute("name"), target: rel ? rel.getAttribute("Target") : "", path: rel ? resolve(dir, rel.getAttribute("Target")) : "" };
                     });
-                    return Promise.all([ssRel ? read(pkg, resolve(dir, ssRel.getAttribute("Target"))) : null].concat(L.sheets.map(function(s){ return s.path ? read(pkg, s.path) : null; })));
+                    return Promise.all([ssRel ? read(pkg, resolve(dir, ssRel.getAttribute("Target"))) : null, L.stylesPath ? read(pkg, L.stylesPath) : null].concat(L.sheets.map(function(s){ return s.path ? read(pkg, s.path) : null; })));
                 }).then(function(r){
                     L.ss = r[0] ? strings(parse(r[0])) : [];
-                    L.texts = r.slice(1);
+                    L.stylesText = r[1];
+                    L.texts = r.slice(2);
                     for(var i = 0; i < L.sheets.length && !L.mode; i++){
                         if(!L.texts[i]) continue;
                         var doc = parse(L.texts[i]), labels = labelsIn(doc, L.ss), header = headerIn(labels);
@@ -2005,7 +2025,7 @@ javascript:(function(){
                 var g = grid(doc), found = null;
                 Object.keys(g.rows).map(Number).sort(function(a, b){ return a - b; }).some(function(r){
                     var cols = {};
-                    kids(g.rows[r], "c").forEach(function(c){ var t = textIn(c, ss).trim().toLowerCase().replace(/[:?.]$/, ""); if(/^(qtr|quarter|course|credits|grade)$/.test(t)) cols[t === "quarter" ? "qtr" : t] = at(c.getAttribute("r")).c; });
+                    kids(g.rows[r], "c").forEach(function(c){ var t = textIn(c, ss).trim().toLowerCase().replace(/[:?.]$/, ""); if(/^(qtr|quarter|course|instructor|area|sem|seminar|credits|grade|notes)$/.test(t)) cols[{ quarter: "qtr", seminar: "sem" }[t] || t] = at(c.getAttribute("r")).c; });
                     if(cols.qtr && cols.course && cols.credits && cols.grade) found = { row: r, cols: cols };
                     return !!found;
                 });
@@ -2013,23 +2033,52 @@ javascript:(function(){
                 var styleAt = function(r){ var c = g.cells[colName(found.cols.course) + r]; return c ? c.getAttribute("s") || "" : null; }, first = styleAt(found.row + 1), n = 0;
                 while(first !== null && styleAt(found.row + 1 + n) === first && n < 500) n++;
                 found.rows = n;
+                /* The legend's colors (a cell reading "Philosophy Seminar", say, filled in that color): row kinds and "pending". */
+                found.legend = {};
+                Object.keys(g.cells).forEach(function(ref){
+                    var t = textIn(g.cells[ref], ss).trim().toLowerCase(), kind = { "philosophy course": "course", "philosophy seminar": "seminar", "topics in teaching": "teaching", "pre-dissertation workshop": "workshop", "pending": "pending" }[t];
+                    if(kind && g.cells[ref].getAttribute("s")) found.legend[kind] = g.cells[ref].getAttribute("s");
+                });
                 return found;
             }
-            function fillCourses(doc, g, table, v, filled){
+            function fillCourses(doc, L, g, table, v, filled){
                 if(!table || !v.courses) return;
-                var cols = table.cols, shown = Math.min(v.courses.length, table.rows);
+                var cols = table.cols, shown = Math.min(v.courses.length, table.rows), span = Object.keys(cols).map(function(k){ return cols[k]; });
+                var first = Math.min.apply(null, span), last = Math.max.apply(null, span);
                 for(var i = 0; i < shown; i++){
                     var c = v.courses[i], r = table.row + 1 + i, grade = String(c.grade || "").trim();
                     setCell(cellAt(g, colName(cols.qtr) + r), c.q ? c.q.label : "");
                     setCell(cellAt(g, colName(cols.course) + r), c.dept + " " + c.num + (c.title ? " " + c.title : ""));
                     setCell(cellAt(g, colName(cols.credits) + r), c.credits === null ? "" : c.credits);
                     setCell(cellAt(g, colName(cols.grade) + r), /^\d(\.\d+)?$/.test(grade) ? parseFloat(grade) : grade);
+                    if(cols.area && c.area) setCell(cellAt(g, colName(cols.area) + r), c.area);
+                    if(cols.sem && c.sem) setCell(cellAt(g, colName(cols.sem) + r), c.sem);
+                    /* The row in its kind's legend color, and an ungraded (in-progress) grade in "pending"'s. */
+                    for(var col = first; col <= last; col++){
+                        var cell = cellAt(g, colName(col) + r), base = cell.getAttribute("s") || "0";
+                        var from = col === cols.grade && c.pending && table.legend.pending ? table.legend.pending : table.legend[c.kind];
+                        if(from) cell.setAttribute("s", fillStyle(L, base, from));
+                    }
                 }
                 if(v.courses.length) filled["Course table"] = true;
                 if(v.courses.length > table.rows) filled.overflow = (filled.overflow || 0) + 1;
             }
-            function fillLabels(doc, ss, v, filled){
-                var g = grid(doc), merges = kids(first(doc, "mergeCells"), "mergeCell").map(function(m){ var p = m.getAttribute("ref").split(":"); return { a: at(p[0]), b: at(p[1] || p[0]) }; });
+            /* A cell style like base but with the fill of style from (both indexes into styles.xml's cellXfs), added once. */
+            function fillStyle(L, base, from){
+                var key = base + ">" + from;
+                if(L.fillCache[key] !== undefined) return L.fillCache[key];
+                if(!L.styles && L.stylesText) L.styles = parse(L.stylesText);
+                var list = L.styles && first(L.styles, "cellXfs"), xfs = kids(list, "xf"), b = xfs[+base], f = xfs[+from];
+                if(!b || !f) return (L.fillCache[key] = base);
+                var x = b.cloneNode(true);
+                x.setAttribute("fillId", f.getAttribute("fillId") || "0");
+                x.setAttribute("applyFill", "1");
+                list.appendChild(x);
+                list.setAttribute("count", xfs.length + 1);
+                return (L.fillCache[key] = String(xfs.length));
+            }
+            function fillLabels(doc, L, v, filled){
+                var ss = L.ss, g = grid(doc), merges = kids(first(doc, "mergeCells"), "mergeCell").map(function(m){ var p = m.getAttribute("ref").split(":"); return { a: at(p[0]), b: at(p[1] || p[0]) }; });
                 labelsIn(doc, ss).forEach(function(l){
                     var val = xlValue(l.f, v);
                     if(val === "" || val === null || val === undefined) return;
@@ -2038,7 +2087,7 @@ javascript:(function(){
                     setCell(target || cellAt(g, ref), val);
                     filled[l.text.replace(/\s+/g, " ").replace(/\s*:?\s*$/, "")] = true;
                 });
-                fillCourses(doc, g, courseTable(doc, ss), v, filled);
+                fillCourses(doc, L, g, courseTable(doc, ss), v, filled);
             }
             /* Tabs: the template sheet becomes the first student's tab, and each other student gets a copy right after it. */
             function fillTabs(pkg, L, list){
@@ -2051,7 +2100,7 @@ javascript:(function(){
                     var after = src.el, oldName = src.name;
                     list.forEach(function(v, i){
                         var doc = i ? parse(srcText) : L.doc;
-                        fillLabels(doc, L.ss, v, filled);
+                        fillLabels(doc, L, v, filled);
                         if(!i){ select(doc); put(pkg, src.path, ser(doc)); return; }
                         kids(first(doc, "sheetViews"), "sheetView").forEach(function(sv){ sv.removeAttribute("tabSelected"); });
                         doc.documentElement.removeAttributeNS("http://schemas.microsoft.com/office/spreadsheetml/2014/revision", "uid");
@@ -2126,6 +2175,7 @@ javascript:(function(){
                 });
                 L.sheets.forEach(function(sh, i){ if(i !== L.at && L.texts[i] && /\stabSelected="(1|true)"/.test(L.texts[i])) put(pkg, sh.path, L.texts[i].replace(/\stabSelected="(1|true)"/g, "")); });
                 kids(first(L.wb, "bookViews"), "workbookView").forEach(function(wv){ wv.setAttribute("activeTab", L.at); wv.removeAttribute("firstSheet"); });
+                if(L.styles) put(pkg, L.stylesPath, ser(L.styles));
                 var calc = first(L.wb, "calcPr");
                 if(calc) calc.setAttribute("fullCalcOnLoad", "1");
                 put(pkg, L.wbPath, ser(L.wb));
