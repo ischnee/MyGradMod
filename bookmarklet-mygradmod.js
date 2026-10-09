@@ -1601,12 +1601,29 @@ javascript:(function(){
              below the header is replaced by one row per student, in the first data row's cell formats, with any formulas in
              the template's example rows carried down to every row. Comments on the old rows go with them.
            - A tab per student: a sheet with labels MyGradMod knows ("Name:", "MA Awarded"...). Each student gets a copy as
-             their own tab. A label ending in a colon gets the value after it in the same cell, any other label the cell to
-             its right.
+             their own tab. Each label's value goes in the cell to its right (after the label's merged cells).
            Only what MyGradMod already reads is filled; the rest is left for the user. An .xlsx is a zip of XML parts, read and
            written here with the browser's own (de)compression: no library, and nothing is sent anywhere. */
         function qtrOf(line){ var m = String(line || "").match(/^\s*(win|spr|sum|aut)\w*,?\s+(\d{4})/i); return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1, 3).toLowerCase() + " " + m[2] : ""; }
         function dateQtr(date){ var p = String(date || "").split("/"); return p.length < 3 ? "" : (+p[0] <= 3 ? "Win" : +p[0] <= 6 ? "Spr" : +p[0] <= 8 ? "Sum" : "Aut") + " " + p[2]; }
+        /* MyGrad's advisor/chair list, one person per line, with their role and date dropped: just the name. */
+        function peopleOf(d){
+            return lines(d.AdvisorChair).map(function(l){
+                var role = (l.match(/\b(co-?\s?chair|chair|advis[oe]r)\b/i) || [])[1] || "";
+                var name = l.replace(/\(?\b(co-?\s?chair(person)?|chair(person)?|advis[oe]r|member|gsr)\b\)?:?/ig, " ")
+                    .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b/ig, " ")
+                    .replace(/[\[\]()]/g, " ").replace(/\s+[-–—]\s+/g, " ").replace(/\s+/g, " ").replace(/^[\s,;:\-–—]+|[\s,;:\-–—]+$/g, "");
+                return { name: name || l, role: role.toLowerCase().replace(/[\s-]/g, "") };
+            });
+        }
+        /* An exam request's "Exam Date: Jul 15 2026" (or the exam requests page's 7/15/2026), as 7/15/2026. */
+        var MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+        function examDate(line){
+            var m = String(line || "").match(/exam date:?\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/i);
+            if(m) return MON[m[1].toLowerCase()] + "/" + +m[2] + "/" + m[3];
+            m = String(line || "").match(/exam date:?\s*(\d{1,2}\/\d{1,2}\/\d{4})/i);
+            return m ? m[1] : "";
+        }
         /* What a template can be filled with, for one student. step: the ASE pay step MyGrad can show (2 a UW master's in their
            field, 3 a candidate; 0 unknown, since a master's from elsewhere isn't in MyGrad). */
         function exportValues(s){
@@ -1615,15 +1632,19 @@ javascript:(function(){
             var awarded = lines(d.FinalExamRequests).filter(function(l){ return /awarded/i.test(l); })[0] || "";
             var field = (String(s.degreeTitle || d.DegreeTitle || "").match(/\(\s*([^)]+?)\s*\)/) || [])[1] || "";
             var degree = !!s.d && !s.nonDegree, cand = degree && candidate(s), ma = degree && maDone(s), n800 = credits800(s);
+            var people = peopleOf(d), chair = people.filter(function(p){ return p.role === "chair"; })[0] || people.filter(function(p){ return p.role === "cochair"; })[0]
+                || people.filter(function(p){ return p.role === "advisor" || p.role === "adviser"; })[0] || people[0];
+            var genLines = lines(d.GenExamRequests).filter(function(l){ return examDate(l); }), finalLines = lines(d.FinalExamRequests).filter(function(l){ return examDate(l); });
             return {
                 name: s.name, lastName: comma === -1 ? legal : legal.slice(0, comma).trim(), firstName: comma === -1 ? "" : legal.slice(comma + 1).trim(),
                 sid: /^\d+$/.test(String(s.sid)) ? Number(s.sid) : s.sid || "", email: s.email || "", netid: /@uw\.edu$/i.test(s.email || "") ? s.email.split("@")[0] : "",
                 program: field.toLowerCase().replace(/(^|[\s\/:-])([a-z])/g, function(x, a, b){ return a + b.toUpperCase(); }),
                 degreeTitle: s.degreeTitle || d.DegreeTitle || "", newRet: /new/i.test(d.NewContReturn) ? "N" : d.NewContReturn ? "R" : "",
                 entered: s.admitFromLists || (parseInt(d.GradAdmitYr, 10) ? qtrOf(d.GradAdmitQtr + " " + d.GradAdmitYr) : ""),
-                cohort: s.cohort === null || s.cohort === undefined ? "" : classLabel(s.cohort), advisor: lines(d.AdvisorChair).join("; "),
+                cohort: s.cohort === null || s.cohort === undefined ? "" : classLabel(s.cohort), advisor: people.map(function(p){ return p.name; }).join("; "), chair: chair ? chair.name : "",
                 ma: qtrOf(granted) || qtrOf(uwDegreeLine(s, "ma")) || (ma ? "Yes" : ""), committee: degree && yes(d.HasDocComm) ? "Yes" : "",
-                genExam: cand ? dateQtr(m.candDate) || "Yes" : "", finalExam: qtrOf(awarded), phd: qtrOf(awarded) || qtrOf(uwDegreeLine(s, "phd")),
+                genExam: cand ? dateQtr(m.candDate) || "Yes" : "", finalExam: qtrOf(awarded),
+                genDate: m.candDate || examDate(genLines[genLines.length - 1]), finalDate: examDate(finalLines[finalLines.length - 1]), phd: qtrOf(awarded) || qtrOf(uwDegreeLine(s, "phd")),
                 credits800: n800 === null || (!n800 && !cand) ? "" : n800, step: cand ? 3 : ma ? 2 : 0, terms: s.terms || {}
             };
         }
@@ -1632,9 +1653,10 @@ javascript:(function(){
             [/^(student )?name$|^full name$/, "name"], [/^last name$/, "lastName"], [/^first name$/, "firstName"],
             [/^student (no\.?|number|id|#)$/, "sid"], [/^(uw )?e-?mail$/, "email"], [/^net ?id$/, "netid"],
             [/^program$/, "program"], [/^degree title$/, "degreeTitle"], [/^new \(n\) ?\/ ?returning \(r\)( student)?$/, "newRet"],
-            [/^(qtr|quarter) entered$/, "entered"], [/^(entering class|cohort)$/, "cohort"], [/^(advisor|advisor ?\/ ?chair|dissertation chair)$/, "advisor"],
+            [/^(qtr|quarter) entered$/, "entered"], [/^(entering class|cohort)$/, "cohort"], [/^(advisor|advisor ?\/ ?chair)$/, "advisor"], [/^(dissertation )?chair$/, "chair"],
             [/^(ase|pdta) level$/, "step"], [/^ma awarded( \(qtr\))?$/, "ma"], [/^(supervisory|doctoral) committee( est\.?| \(qtr est\.?\))?$/, "committee"],
-            [/^general exam( passed)?( \(qtr\))?$/, "genExam"], [/^final exam( passed)?( \(qtr\))?$/, "finalExam"], [/^ph\.?d\.? awarded( \(qtr\))?$/, "phd"],
+            [/^general exam( passed)?( \(qtr\))?$/, "genExam"], [/^final exam( passed)?( \(qtr\))?$/, "finalExam"],
+            [/^general exam scheduled( \(date\))?$/, "genDate"], [/^final exam scheduled( \(date\))?$/, "finalDate"], [/^ph\.?d\.? awarded( \(qtr\))?$/, "phd"],
             [/^dissertation credits\b.*\b800\b/, "credits800"], [/^enroll(ment)? confirm(ation|ed)? (aut|win|spr|sum)[a-z]* ?'?(\d{2}|\d{4})$/, "term"]
         ];
         function xlField(label){
@@ -1861,6 +1883,7 @@ javascript:(function(){
                 var dim = first(doc, "dimension"), m = dim && /:([A-Z]+)\d+$/.exec(dim.getAttribute("ref") || "");
                 if(m) dim.setAttribute("ref", dim.getAttribute("ref").replace(/:([A-Z]+)\d+$/, ":" + m[1] + (hr + Math.max(list.length, 1))));
                 var path = L.sheets[L.at].path;
+                select(doc);
                 put(pkg, path, ser(doc));
                 return pruneComments(pkg, path, hr).then(function(){ return Object.keys(filled); });
             }
@@ -1913,12 +1936,9 @@ javascript:(function(){
                 labelsIn(doc, ss).forEach(function(l){
                     var val = xlValue(l.f, v);
                     if(val === "" || val === null || val === undefined) return;
-                    if(/:\s*$/.test(l.text)) setCell(g.cells[l.ref], l.text + (/\s$/.test(l.text) ? "" : " ") + val);
-                    else {
-                        var p = at(l.ref), m = merges.filter(function(x){ return x.a && x.a.r === p.r && x.a.c === p.c; })[0], ref = colName((m ? m.b.c : p.c) + 1) + p.r, target = g.cells[ref];
-                        if(target && (kids(target, "f").length || xlField(textIn(target, ss)))) return;
-                        setCell(target || cellAt(g, ref), val);
-                    }
+                    var p = at(l.ref), m = merges.filter(function(x){ return x.a && x.a.r === p.r && x.a.c === p.c; })[0], ref = colName((m ? m.b.c : p.c) + 1) + p.r, target = g.cells[ref];
+                    if(target && (kids(target, "f").length || xlField(textIn(target, ss)))) return;
+                    setCell(target || cellAt(g, ref), val);
                     filled[l.text.replace(/\s+/g, " ").replace(/\s*:?\s*$/, "")] = true;
                 });
             }
@@ -1934,7 +1954,7 @@ javascript:(function(){
                     list.forEach(function(v, i){
                         var doc = i ? parse(srcText) : L.doc;
                         fillLabels(doc, L.ss, v, filled);
-                        if(!i){ put(pkg, src.path, ser(doc)); return; }
+                        if(!i){ select(doc); put(pkg, src.path, ser(doc)); return; }
                         kids(first(doc, "sheetViews"), "sheetView").forEach(function(sv){ sv.removeAttribute("tabSelected"); });
                         doc.documentElement.removeAttributeNS("http://schemas.microsoft.com/office/spreadsheetml/2014/revision", "uid");
                         var file = "sheet" + (++maxNum) + ".xml", path = dirOf(src.path) + file, rid = "rId" + (++maxRid);
@@ -1964,6 +1984,8 @@ javascript:(function(){
                     return Object.keys(filled);
                 });
             }
+            /* The filled sheet is the one selected (a workbook can be saved on another tab: the Music one opens on Recruitment). */
+            function select(doc){ var v = kids(first(doc, "sheetViews"), "sheetView")[0]; if(v) v.setAttribute("tabSelected", "1"); }
             function override(L, part, type){
                 var o = L.ct.createElementNS(CNS, "Override");
                 o.setAttribute("PartName", part); o.setAttribute("ContentType", type);
@@ -2004,6 +2026,8 @@ javascript:(function(){
                     r.parentNode.removeChild(r);
                     kids(L.ct.documentElement, "Override").forEach(function(o){ if(o.getAttribute("PartName") === "/" + part) o.parentNode.removeChild(o); });
                 });
+                L.sheets.forEach(function(sh, i){ if(i !== L.at && L.texts[i] && /\stabSelected="(1|true)"/.test(L.texts[i])) put(pkg, sh.path, L.texts[i].replace(/\stabSelected="(1|true)"/g, "")); });
+                kids(first(L.wb, "bookViews"), "workbookView").forEach(function(wv){ wv.setAttribute("activeTab", L.at); wv.removeAttribute("firstSheet"); });
                 var calc = first(L.wb, "calcPr");
                 if(calc) calc.setAttribute("fullCalcOnLoad", "1");
                 put(pkg, L.wbPath, ser(L.wb));

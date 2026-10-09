@@ -126,7 +126,7 @@ Fill your own Excel template with what MyGradMod knows about the students you pi
 
 **Two layouts, recognized from the template's own labels:**
 
-- **A tab per student:** a sheet laid out for one student, with labels such as "Name:", "Qtr Entered:", "MA Awarded" or "Dissertation Chair". Each student gets a copy of the sheet as their own tab, named for them. A label ending in a colon gets the value after it in the same cell; any other label, the cell to its right.
+- **A tab per student:** a sheet laid out for one student, with labels such as "Name:", "Qtr Entered:", "MA Awarded" or "Dissertation Chair". Each student gets a copy of the sheet as their own tab, named for them. Each label's value goes in the cell to its right.
 - **A row per student:** a sheet with a header row naming at least three columns MyGradMod knows, one of them "Name". Everything below the header row is replaced by one row per student. The rows take the first example row's formats, and any formulas in the example rows (a salary lookup, say) are carried down to every row. Comments on the old rows are removed.
 
 **What it fills** (case and spacing don't matter):
@@ -138,16 +138,18 @@ Fill your own Excel template with what MyGradMod knows about the students you pi
 | Program, Degree Title | From the degree title, e.g. "Instrumental Conducting" and "DOCTOR OF MUSICAL ARTS (INSTRUMENTAL CONDUCTING)" |
 | New (N)/Returning (R) | N for a new student, otherwise R |
 | Qtr Entered, Entering Class / Cohort | The student's start (see Start dates under Cautions) |
-| Advisor, Dissertation Chair | MyGrad's advisor/chair list |
+| Advisor | Everyone on MyGrad's advisor/chair list, names only |
+| Dissertation Chair | The chair on MyGrad's advisor/chair list (or else the advisor), name only |
 | MA Awarded | The quarter of the granted master's request, or of the master's in UW degrees |
 | Supervisory / Doctoral Committee | "Yes" when MyGrad shows one (MyGrad has no date for it) |
 | General Exam (Passed) | The exam's quarter from the exam requests page, or "Yes" for a candidate when it can't be read |
 | Final Exam (Passed), PhD Awarded | The quarter of the awarded final exam, or of the PhD in UW degrees |
+| General / Final Exam Scheduled (Date) | The exam date on MyGrad's exam request (for the general exam, the exam requests page's date if it was read) |
 | Dissertation credits … 800 | Total 800 credits from the transcript, for candidates and anyone with some |
 | ASE Level, PDTA Level | The pay step MyGrad can show: candidate, or post-master's for a UW master's in the student's field. Left blank otherwise, since MyGrad doesn't know degrees from elsewhere. "PDTA Level" takes PDTA1 and PDTA2. |
 | Enroll Confirmation AUT26 (any quarter) | The student's status (and credits) on that quarter's list, for the current and next quarters |
 
-Anything else in the template is left for you. Excel recalculates formulas when it opens the file.
+Anything else in the template is left for you. The file opens on the sheet that was filled, and Excel recalculates formulas when it opens it.
 
 ## Cautions
 
