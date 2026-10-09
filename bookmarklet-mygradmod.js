@@ -235,6 +235,23 @@ javascript:(function(){
         return { credits: rows.reduce(function(sum, r){ return sum + r.cr; }, 0), entries: rows.length,
             quarters: labelled ? idx.length : null, qIdx: labelled ? idx : null, first: labelled && idx.length ? quarters[idx[0]] : null, last: labelled && idx.length ? quarters[idx[idx.length - 1]] : null };
     }
+    /* Export to Excel (Oct 2026): every course row on a transcript, with its quarter, as Course | Course Title | Credits | Grade
+       (the transcript's columns, per a masked probe on Oct 8). Read only when the user exports, for the students they chose. */
+    function readCourses(doc){
+        var rows = [];
+        Array.prototype.filter.call(doc.querySelectorAll("table"), isCourseTable).forEach(function(t){
+            var q = quarterOf(t);
+            Array.prototype.forEach.call(t.querySelectorAll("tbody tr"), function(tr){
+                var c = cellsOf(tr);
+                if(c.length < 4){ var rq = quarterIn(c.join(" ")); if(rq) q = rq; return; }
+                var m = c[0].match(/^([A-Z&][A-Z& ]*?)\s*(\d{3})(?!\d)/);
+                if(!m) return;
+                var cr = parseFloat(c[2]);
+                rows.push({ dept: m[1].trim(), num: +m[2], title: c[1], credits: isNaN(cr) ? null : cr, grade: c[3], q: q });
+            });
+        });
+        return rows;
+    }
     function readCandidacy(doc){
         var granted = [];
         Array.prototype.forEach.call(doc.querySelectorAll("table"), function(t){
@@ -567,6 +584,23 @@ javascript:(function(){
             targets.push({ i: i, key: k, name: d.StudentName || students[i].legalName || students[i].name });
         });
         loadMilestones(targets);
+        /* Export to Excel asks this tab for the chosen students' transcript courses (by their place in the student list),
+           three at a time like the milestones. onProgress(done, total) is the dashboard's. */
+        window.mygradmodCourses = function(indexes, onProgress){
+            var out = {}, queue = indexes.slice(), done = 0, stop = false;
+            var worker = function(){
+                if(stop || !queue.length) return Promise.resolve();
+                var i = queue.shift(), k = studentKeys[i], d = detailByKey[k];
+                return readPage(location.origin + "/mgp-dept.stu.detail/home/transcript?id=" + encodeURIComponent(k), /Transcripts for\s*(.+?)\s+Last Enrolled/i,
+                    (d && d.StudentName) || students[i].legalName || students[i].name, 3).then(function(r){
+                    if(r.signedOut){ stop = true; out.signedOut = true; return; }
+                    out[i] = r.error ? { error: r.error } : { courses: readCourses(r.doc) };
+                    done++;
+                    try { if(onProgress) onProgress(done, indexes.length); } catch(e){}
+                }).then(worker);
+            };
+            return Promise.all([worker(), worker(), worker()]).then(function(){ return JSON.parse(JSON.stringify(out)); });
+        };
     }).catch(function(err){
         w.document.body.innerHTML = "<p style='font-family:sans-serif;padding:20px;color:#b91c1c'>Couldn't load the student list from MyGrad (" + err.message + "). Reload the By Quarter page and try again.</p>";
     });
@@ -1607,14 +1641,19 @@ javascript:(function(){
            written here with the browser's own (de)compression: no library, and nothing is sent anywhere. */
         function qtrOf(line){ var m = String(line || "").match(/^\s*(win|spr|sum|aut)\w*,?\s+(\d{4})/i); return m ? m[1].charAt(0).toUpperCase() + m[1].slice(1, 3).toLowerCase() + " " + m[2] : ""; }
         function dateQtr(date){ var p = String(date || "").split("/"); return p.length < 3 ? "" : (+p[0] <= 3 ? "Win" : +p[0] <= 6 ? "Spr" : +p[0] <= 8 ? "Sum" : "Aut") + " " + p[2]; }
-        /* MyGrad's advisor/chair list, one person per line, with their role and date dropped: just the name. */
+        /* MyGrad's advisor/chair list, one person per line: the name alone, the role and the date it started. Philosophy's
+           lines (masked probe, Oct 8 2026) read "First Last, Advisor Sep 16 2024" or "First Last, Xxx Chair Sep  6 2024";
+           anything else falls back to dropping role words and dates. */
+        function roleOf(t){ return /co-?\s?chair/i.test(t) ? "cochair" : /chair/i.test(t) ? "chair" : /advis[oe]r/i.test(t) ? "advisor" : ""; }
         function peopleOf(d){
             return lines(d.AdvisorChair).map(function(l){
-                var role = (l.match(/\b(co-?\s?chair|chair|advis[oe]r)\b/i) || [])[1] || "";
+                var m = l.match(/^(.+?),\s+([^,]*?)\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})\s*$/i);
+                if(m && roleOf(m[2])) return { name: m[1].trim(), role: roleOf(m[2]), since: new Date(+m[5], MON[m[3].toLowerCase()] - 1, +m[4]) };
+                var role = roleOf(l);
                 var name = l.replace(/\(?\b(co-?\s?chair(person)?|chair(person)?|advis[oe]r|member|gsr)\b\)?:?/ig, " ")
                     .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b/ig, " ")
                     .replace(/[\[\]()]/g, " ").replace(/\s+[-–—]\s+/g, " ").replace(/\s+/g, " ").replace(/^[\s,;:\-–—]+|[\s,;:\-–—]+$/g, "");
-                return { name: name || l, role: role.toLowerCase().replace(/[\s-]/g, "") };
+                return { name: name || l, role: role, since: null };
             });
         }
         /* An exam request's "Exam Date: Jul 15 2026" (or the exam requests page's 7/15/2026), as 7/15/2026. */
@@ -1627,38 +1666,62 @@ javascript:(function(){
         }
         /* What a template can be filled with, for one student. step: the ASE pay step MyGrad can show (2 a UW master's in their
            field, 3 a candidate; 0 unknown, since a master's from elsewhere isn't in MyGrad). */
-        function exportValues(s){
+        /* Credits that count: a grade that isn't a withdrawal, incomplete or no-credit, and if numeric at least 0.7. In-progress
+           courses (no grade yet) don't count yet. */
+        function earned(c){ var g = String(c.grade || "").trim(), n = parseFloat(g); return c.credits !== null && !!g && !/^(w|hw|i|x|nc|ns|e|nf)$/i.test(g) && (isNaN(n) || n >= 0.7); }
+        function graded(c){ return /^\d(\.\d+)?$/.test(String(c.grade || "").trim()); }
+        function exportValues(s, tr){
             var d = s.d || {}, m = s.ms || {}, legal = String(s.legalName || s.name || ""), comma = legal.indexOf(",");
             var granted = lines(d.MastersRequests).filter(function(l){ return /granted|awarded/i.test(l); })[0] || "";
             var awarded = lines(d.FinalExamRequests).filter(function(l){ return /awarded/i.test(l); })[0] || "";
             var field = (String(s.degreeTitle || d.DegreeTitle || "").match(/\(\s*([^)]+?)\s*\)/) || [])[1] || "";
-            var degree = !!s.d && !s.nonDegree, cand = degree && candidate(s), ma = degree && maDone(s), n800 = credits800(s);
+            var degree = !!s.d && !s.nonDegree, cand = degree && candidate(s), ma = degree && maDone(s), n800 = credits800(s), out;
             var people = peopleOf(d), chair = people.filter(function(p){ return p.role === "chair"; })[0] || people.filter(function(p){ return p.role === "cochair"; })[0]
-                || people.filter(function(p){ return p.role === "advisor" || p.role === "adviser"; })[0] || people[0];
+                || people.filter(function(p){ return p.role === "advisor"; })[0] || people[0];
+            /* The first-year advisor: someone on the list since the student's first year (from the June before it). */
+            var firstYear = s.cohort === null || s.cohort === undefined ? null : people.filter(function(p){ return p.since && p.since >= new Date(s.cohort, 5, 1) && p.since < new Date(s.cohort + 1, 8, 1); })[0];
             var genLines = lines(d.GenExamRequests).filter(function(l){ return examDate(l); }), finalLines = lines(d.FinalExamRequests).filter(function(l){ return examDate(l); });
-            return {
+            out = {
                 name: s.name, lastName: comma === -1 ? legal : legal.slice(0, comma).trim(), firstName: comma === -1 ? "" : legal.slice(comma + 1).trim(),
                 sid: /^\d+$/.test(String(s.sid)) ? Number(s.sid) : s.sid || "", email: s.email || "", netid: /@uw\.edu$/i.test(s.email || "") ? s.email.split("@")[0] : "",
                 program: field.toLowerCase().replace(/(^|[\s\/:-])([a-z])/g, function(x, a, b){ return a + b.toUpperCase(); }),
                 degreeTitle: s.degreeTitle || d.DegreeTitle || "", newRet: /new/i.test(d.NewContReturn) ? "N" : d.NewContReturn ? "R" : "",
                 entered: s.admitFromLists || (parseInt(d.GradAdmitYr, 10) ? qtrOf(d.GradAdmitQtr + " " + d.GradAdmitYr) : ""),
-                cohort: s.cohort === null || s.cohort === undefined ? "" : classLabel(s.cohort), advisor: people.map(function(p){ return p.name; }).join("; "), chair: chair ? chair.name : "",
+                cohort: s.cohort === null || s.cohort === undefined ? "" : classLabel(s.cohort), advisor: people.map(function(p){ return p.name; }).join("; "), chair: chair ? chair.name : "", firstAdvisor: firstYear ? firstYear.name : "",
                 ma: qtrOf(granted) || qtrOf(uwDegreeLine(s, "ma")) || (ma ? "Yes" : ""), committee: degree && yes(d.HasDocComm) ? "Yes" : "",
                 genExam: cand ? dateQtr(m.candDate) || "Yes" : "", finalExam: qtrOf(awarded),
                 genDate: m.candDate || examDate(genLines[genLines.length - 1]), finalDate: examDate(finalLines[finalLines.length - 1]), phd: qtrOf(awarded) || qtrOf(uwDegreeLine(s, "phd")),
                 credits800: n800 === null || (!n800 && !cand) ? "" : n800, step: cand ? 3 : ma ? 2 : 0, terms: s.terms || {}
             };
+            /* The transcript, from the student's first quarter in the program on: the course table lists coursework (numbered
+               below 600, so not independent study, thesis or dissertation credits), in quarter order; the totals count it all. */
+            if(tr && tr.courses){
+                var QI = { WIN: 0, SPR: 1, SUM: 2, AUT: 3 }, a = String(s.admitFromLists || (d.GradAdmitQtr + " " + d.GradAdmitYr)).toUpperCase().match(/^(WIN|SPR|SUM|AUT)\w*\s+(\d{4})/);
+                var from = a ? +a[2] * 4 + QI[a[1]] : s.cohort !== null && s.cohort !== undefined ? s.cohort * 4 + 2 : -Infinity;
+                var mine = tr.courses.filter(function(c){ return !c.q || c.q.idx >= from; }), sum = function(list){ return list.reduce(function(t, c){ return t + c.credits; }, 0); };
+                var phil = function(c, nums){ return c.dept === "PHIL" && nums.indexOf(c.num) !== -1 && earned(c); };
+                out.courses = mine.filter(function(c){ return c.num < 600; }).map(function(c, i){ return { c: c, i: i }; }).sort(function(x, y){ return ((x.c.q || {}).idx || 0) - ((y.c.q || {}).idx || 0) || x.i - y.i; }).map(function(x){ return x.c; });
+                out.c504 = mine.filter(function(c){ return phil(c, [504, 505]); }).length;
+                out.phil30 = mine.filter(function(c){ return c.dept === "PHIL" && c.num < 600 && graded(c) && parseFloat(c.grade) >= 3; }).length;
+                out.totalCredits = sum(mine.filter(earned));
+                out.credits500 = sum(mine.filter(function(c){ return earned(c) && c.num >= 500; }));
+                out.numeric400 = sum(mine.filter(function(c){ return earned(c) && graded(c) && c.num >= 400 && c.num <= 599 && c.num !== 499; }));
+                out.w502 = mine.filter(function(c){ return phil(c, [502, 503]); }).length;
+            }
+            out.transcript = tr ? (tr.courses ? "read" : "unread") : "";
+            return out;
         }
         /* Labels and column headers MyGradMod knows, read loosely (case, spacing and a trailing colon don't matter). */
         var XL_FIELDS = [
             [/^(student )?name$|^full name$/, "name"], [/^last name$/, "lastName"], [/^first name$/, "firstName"],
             [/^student (no\.?|number|id|#)$/, "sid"], [/^(uw )?e-?mail$/, "email"], [/^net ?id$/, "netid"],
             [/^program$/, "program"], [/^degree title$/, "degreeTitle"], [/^new \(n\) ?\/ ?returning \(r\)( student)?$/, "newRet"],
-            [/^(qtr|quarter) entered$/, "entered"], [/^(entering class|cohort)$/, "cohort"], [/^(advisor|advisor ?\/ ?chair)$/, "advisor"], [/^(dissertation )?chair$/, "chair"],
+            [/^(qtr|quarter) entered$/, "entered"], [/^(entering class|cohort)$/, "cohort"], [/^(advisor|advisor ?\/ ?chair)$/, "advisor"], [/^(dissertation )?chair$/, "chair"], [/^(1st|first)[ -]?(yr|year) advis[oe]?r$/, "firstAdvisor"],
             [/^(ase|pdta) level$/, "step"], [/^ma awarded( \(qtr\))?$/, "ma"], [/^(supervisory|doctoral) committee( est\.?| \(qtr est\.?\))?$/, "committee"],
             [/^general exam( passed)?( \(qtr\))?$/, "genExam"], [/^final exam( passed)?( \(qtr\))?$/, "finalExam"],
             [/^general exam scheduled( \(date\))?$/, "genDate"], [/^final exam scheduled( \(date\))?$/, "finalDate"], [/^ph\.?d\.? awarded( \(qtr\))?$/, "phd"],
-            [/^dissertation credits\b.*\b800\b/, "credits800"], [/^enroll(ment)? confirm(ation|ed)? (aut|win|spr|sum)[a-z]* ?'?(\d{2}|\d{4})$/, "term"]
+            [/^dissertation credits\b.*\b800\b/, "credits800"], [/^teaching topics\b.*\b504\b/, "c504"], [/^courses completed in uw philosophy\b/, "phil30"],
+            [/^total credits\b/, "totalCredits"], [/^credits numbered 500\b/, "credits500"], [/^numerically graded credits\b/, "numeric400"], [/^phil 502 ?\/ ?503\b/, "w502"], [/^enroll(ment)? confirm(ation|ed)? (aut|win|spr|sum)[a-z]* ?'?(\d{2}|\d{4})$/, "term"]
         ];
         function xlField(label){
             var t = String(label || "").replace(/\s+/g, " ").trim().toLowerCase().replace(/\s*:$/, "");
@@ -1842,7 +1905,10 @@ javascript:(function(){
                         var doc = parse(L.texts[i]), labels = labelsIn(doc, L.ss), header = headerIn(labels);
                         if(header){ L.mode = "rows"; L.header = header; }
                         else if(labels.length >= 2 && labels.some(function(l){ return l.f.key === "name"; })) L.mode = "tabs";
-                        if(L.mode){ L.at = i; L.doc = doc; L.labels = header ? header.labels : labels; }
+                        if(L.mode){
+                            L.at = i; L.doc = doc; L.labels = header ? header.labels : labels;
+                            L.courses = L.mode === "tabs" && (!!courseTable(doc, L.ss) || labels.some(function(l){ return TRANSCRIPT_KEYS.indexOf(l.f.key) !== -1; }));
+                        }
                     }
                     if(!L.mode) throw new Error("MyGradMod found no labels it knows in this file. It needs a “Name” column header (a row per student) or a “Name:” label (a sheet per student).");
                     return L;
@@ -1886,7 +1952,7 @@ javascript:(function(){
                 var path = L.sheets[L.at].path;
                 select(doc);
                 put(pkg, path, ser(doc));
-                return pruneComments(pkg, path, hr).then(function(){ return Object.keys(filled); });
+                return pruneComments(pkg, path, hr).then(function(){ return filled; });
             }
             /* Comments (and their tasks) on rows that were replaced; header comments stay. */
             function pruneComments(pkg, path, hr){
@@ -1932,6 +1998,36 @@ javascript:(function(){
                 used[out.toLowerCase()] = true;
                 return out;
             }
+            /* A course table on a student's sheet: a header row with Qtr, Course, Credits and Grade (Instructor, Area, Sem? and Notes
+               are left for the user), and the bordered rows under it. */
+            var TRANSCRIPT_KEYS = ["c504", "phil30", "totalCredits", "credits500", "numeric400", "w502"];
+            function courseTable(doc, ss){
+                var g = grid(doc), found = null;
+                Object.keys(g.rows).map(Number).sort(function(a, b){ return a - b; }).some(function(r){
+                    var cols = {};
+                    kids(g.rows[r], "c").forEach(function(c){ var t = textIn(c, ss).trim().toLowerCase().replace(/[:?.]$/, ""); if(/^(qtr|quarter|course|credits|grade)$/.test(t)) cols[t === "quarter" ? "qtr" : t] = at(c.getAttribute("r")).c; });
+                    if(cols.qtr && cols.course && cols.credits && cols.grade) found = { row: r, cols: cols };
+                    return !!found;
+                });
+                if(!found) return null;
+                var styleAt = function(r){ var c = g.cells[colName(found.cols.course) + r]; return c ? c.getAttribute("s") || "" : null; }, first = styleAt(found.row + 1), n = 0;
+                while(first !== null && styleAt(found.row + 1 + n) === first && n < 500) n++;
+                found.rows = n;
+                return found;
+            }
+            function fillCourses(doc, g, table, v, filled){
+                if(!table || !v.courses) return;
+                var cols = table.cols, shown = Math.min(v.courses.length, table.rows);
+                for(var i = 0; i < shown; i++){
+                    var c = v.courses[i], r = table.row + 1 + i, grade = String(c.grade || "").trim();
+                    setCell(cellAt(g, colName(cols.qtr) + r), c.q ? c.q.label : "");
+                    setCell(cellAt(g, colName(cols.course) + r), c.dept + " " + c.num + (c.title ? " " + c.title : ""));
+                    setCell(cellAt(g, colName(cols.credits) + r), c.credits === null ? "" : c.credits);
+                    setCell(cellAt(g, colName(cols.grade) + r), /^\d(\.\d+)?$/.test(grade) ? parseFloat(grade) : grade);
+                }
+                if(v.courses.length) filled["Course table"] = true;
+                if(v.courses.length > table.rows) filled.overflow = (filled.overflow || 0) + 1;
+            }
             function fillLabels(doc, ss, v, filled){
                 var g = grid(doc), merges = kids(first(doc, "mergeCells"), "mergeCell").map(function(m){ var p = m.getAttribute("ref").split(":"); return { a: at(p[0]), b: at(p[1] || p[0]) }; });
                 labelsIn(doc, ss).forEach(function(l){
@@ -1942,6 +2038,7 @@ javascript:(function(){
                     setCell(target || cellAt(g, ref), val);
                     filled[l.text.replace(/\s+/g, " ").replace(/\s*:?\s*$/, "")] = true;
                 });
+                fillCourses(doc, g, courseTable(doc, ss), v, filled);
             }
             /* Tabs: the template sheet becomes the first student's tab, and each other student gets a copy right after it. */
             function fillTabs(pkg, L, list){
@@ -1982,7 +2079,7 @@ javascript:(function(){
                         if(/^[A-Za-z_][A-Za-z0-9_.]*$/.test(oldName)) dn.textContent = dn.textContent.replace(new RegExp("(^|[^A-Za-z0-9_.'])" + oldName.replace(/\./g, "\\.") + "!", "g"), "$1" + quoteSheet(names[0]) + "!");
                     });
                     kids(first(L.wb, "bookViews"), "workbookView").forEach(function(wv){ ["activeTab", "firstSheet"].forEach(function(a){ var x = wv.getAttribute(a); if(x !== null && +x > L.at) wv.setAttribute(a, +x + added); }); });
-                    return Object.keys(filled);
+                    return filled;
                 });
             }
             /* The filled sheet is the one selected (a workbook can be saved on another tab: the Music one opens on Recruitment). */
@@ -2039,7 +2136,7 @@ javascript:(function(){
                 /* What a template is: its layout, the sheet used, and the labels MyGradMod will fill. */
                 detect: function(buf){
                     return Promise.resolve().then(function(){ return layout(open(buf)); }).then(function(L){
-                        return { mode: L.mode, sheet: L.sheets[L.at].name, labels: L.labels.map(function(l){ return l.text.replace(/\s+/g, " ").replace(/\s*:?\s*$/, ""); }) };
+                        return { mode: L.mode, sheet: L.sheets[L.at].name, courses: L.courses, labels: L.labels.map(function(l){ return l.text.replace(/\s+/g, " ").replace(/\s*:?\s*$/, ""); }).concat(L.mode === "tabs" && courseTable(L.doc, L.ss) ? ["Course table"] : []) };
                     });
                 },
                 /* A filled copy: { blob, mode, filled: labels given a value }. */
@@ -2050,7 +2147,10 @@ javascript:(function(){
                         return L.mode === "rows" ? fillRows(pkg, L, list) : fillTabs(pkg, L, list);
                     }).then(function(filled){
                         finish(pkg, L);
-                        return build(pkg).then(function(blob){ return { blob: blob, mode: L.mode, filled: filled }; });
+                        var overflow = +filled.overflow || 0;
+                        delete filled.overflow;
+                        filled = Object.keys(filled);
+                        return build(pkg).then(function(blob){ return { blob: blob, mode: L.mode, filled: filled, overflow: overflow }; });
                     });
                 }
             };
@@ -2154,12 +2254,28 @@ javascript:(function(){
                 });
             }).catch(function(err){ xpMsg("Couldn’t add " + esc(file.name) + ": " + esc(err.message), true); }).then(function(){ input.value = ""; });
         }
+        /* Transcripts are read through the MyGrad tab (it holds the MyGrad session and the reader), three at a time. */
+        function transcriptCourses(picked){
+            var mg = null;
+            try { mg = window.opener && !window.opener.closed && typeof window.opener.mygradmodCourses === "function" ? window.opener : null; } catch(e){}
+            if(!mg) return Promise.reject(new Error("this template takes courses from transcripts, which are read through the MyGrad tab. Keep MyGrad’s By Quarter page open (or click MyGradMod there again), then export"));
+            xpMsg("Reading transcripts (0 of " + picked.length + ")…");
+            return mg.mygradmodCourses(picked.map(function(s){ return s.idx; }), function(done, total){ xpMsg("Reading transcripts (" + done + " of " + total + ")…"); }).then(function(out){
+                if(out.signedOut) throw new Error("MyGrad signed you out while reading transcripts. Sign in again and reopen MyGradMod");
+                return out;
+            });
+        }
         function runExport(){
             var t = xpChosen(), picked = xpPicked(), go = document.getElementById("xp-go");
             if(!t || !picked.length) return;
             go.disabled = true;
+            var bytes = fromB64(t.data), unread = 0;
             xpMsg("Filling " + esc(t.name) + "…");
-            Promise.resolve().then(function(){ return XL.fill(fromB64(t.data), picked.map(exportValues)); }).then(function(out){
+            XL.detect(bytes).then(function(info){ return info.courses ? transcriptCourses(picked) : {}; }).then(function(trs){
+                unread = picked.filter(function(s){ return trs[s.idx] && !trs[s.idx].courses; }).length;
+                xpMsg("Filling " + esc(t.name) + "…");
+                return XL.fill(bytes, picked.map(function(s){ return exportValues(s, trs[s.idx]); }));
+            }).then(function(out){
                 var day = new Date(), stamp = day.getFullYear() + "-" + ("0" + (day.getMonth() + 1)).slice(-2) + "-" + ("0" + day.getDate()).slice(-2);
                 var base = t.name.replace(/\.xlsx$/i, "").replace(/[\s_-]*(template|copy)\s*$/i, "").trim() || "MyGradMod export";
                 var name = (base + " - " + (picked.length === 1 ? picked[0].name : stamp)).replace(/[\\\/:*?"<>|]/g, "-") + ".xlsx";
@@ -2171,7 +2287,9 @@ javascript:(function(){
                 setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 10000);
                 var n = picked.length, unit = out.mode === "rows" ? (n === 1 ? " row" : " rows") : (n === 1 ? " tab" : " tabs");
                 closeExport();
-                toast("Downloaded <b>" + esc(name) + "</b>: " + n + unit + (out.filled.length ? "" : ", but MyGrad had nothing for its labels") + ". It holds student records: keep it where UW allows them.", 9000, "xp");
+                toast("Downloaded <b>" + esc(name) + "</b>: " + n + unit + (out.filled.length ? "" : ", but MyGrad had nothing for its labels") + ". It holds student records: keep it where UW allows them."
+                    + (unread ? "<br><span class='warn'>" + unread + (unread === 1 ? " transcript" : " transcripts") + " couldn’t be read, so " + (unread === 1 ? "that student’s" : "those students’") + " courses and credit totals are blank.</span>" : "")
+                    + (out.overflow ? "<br><span class='warn'>" + out.overflow + (out.overflow === 1 ? " student has" : " students have") + " more courses than the course table holds; the latest are left off.</span>" : ""), unread || out.overflow ? 15000 : 9000, "xp");
             }).catch(function(err){ xpMsg("Couldn’t export: " + esc(err.message), true); }).then(xpCount);
         }
         document.getElementById("export-open").addEventListener("click", function(){ openExport(this); });

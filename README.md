@@ -36,6 +36,7 @@ The script does not collect or use any information about the student outside of 
   - the number of dissertation (800) credits, and which quarters they fall in
   - whether candidacy was granted, and the exam date
   - No courses, course titles, grades or committee members reach the dashboard.
+  - **Export to Excel** with a template that has a course table or credit totals reads the chosen students' transcripts again, when you export, and puts their courses and grades into the file. They still never show on the dashboard.
 - **Former students appear as class totals, and by name only where you look for them.** A former student's name shows in two places:
   - when you hover their dot in Entering classes
   - in the Former students panel, which starts closed every time
@@ -140,16 +141,21 @@ Fill your own Excel template with what MyGradMod knows about the students you pi
 | Qtr Entered, Entering Class / Cohort | The student's start (see Start dates under Cautions) |
 | Advisor | Everyone on MyGrad's advisor/chair list, names only |
 | Dissertation Chair | The chair on MyGrad's advisor/chair list (or else the advisor), name only |
+| 1st yr Advisor | The person on MyGrad's advisor/chair list since the student's first year (from the June before it); blank if they were added later |
 | MA Awarded | The quarter of the granted master's request, or of the master's in UW degrees |
 | Supervisory / Doctoral Committee | "Yes" when MyGrad shows one (MyGrad has no date for it) |
 | General Exam (Passed) | The exam's quarter from the exam requests page, or "Yes" for a candidate when it can't be read |
 | Final Exam (Passed), PhD Awarded | The quarter of the awarded final exam, or of the PhD in UW degrees |
 | General / Final Exam Scheduled (Date) | The exam date on MyGrad's exam request (for the general exam, the exam requests page's date if it was read) |
 | Dissertation credits … 800 | Total 800 credits from the transcript, for candidates and anyone with some |
+| Course table (a header row with Qtr, Course, Credits, Grade) | From the transcript, read when you export: courses numbered below 600 from the student's first quarter on, in quarter order, as code and title, with the grade as on the transcript (blank while in progress). Instructor, Area, Sem? and Notes are left for you. If there are more courses than rows, the latest are left off and the toast says so. |
+| Teaching Topics PHIL 504 & 505; PHIL 502/503 | How many the student has completed |
+| Courses completed in UW philosophy with 3.0 or higher | PHIL courses below 600 with a numeric grade of 3.0 or more |
+| Total credits; Credits numbered 500 and above; Numerically graded credits, 400-599 (excluding 499) | Credit totals from the transcript since the student's first quarter, counting passing grades only (not W, I, NC and the like; numeric 0.7 or more) |
 | ASE Level, PDTA Level | The pay step MyGrad can show: candidate, or post-master's for a UW master's in the student's field. Left blank otherwise, since MyGrad doesn't know degrees from elsewhere. "PDTA Level" takes PDTA1 and PDTA2. |
 | Enroll Confirmation AUT26 (any quarter) | The student's status (and credits) on that quarter's list, for the current and next quarters |
 
-Anything else in the template is left for you. The file opens on the sheet that was filled, and Excel recalculates formulas when it opens it.
+Transcripts are read through the MyGrad tab, so keep it open on the By Quarter page while you export. Anything else in the template is left for you. The file opens on the sheet that was filled, and Excel recalculates formulas when it opens it.
 
 ## Cautions
 
