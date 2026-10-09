@@ -320,7 +320,6 @@ javascript:(function(){
         + '.yes{background:#d1fae5;color:#047857}.no{background:#f3f4f6;color:#6b7280}.red{background:#fee2e2;color:#b91c1c}.amber{background:#fef3c7;color:#92400e}.info{background:#e0e7ff;color:#3730a3}.gray{background:#f3f4f6;color:#4b5563}'
         + '.small{font-size:12px;color:#666}'
         + 'footer{margin:0 25px 25px;font-size:13px;color:#666}#former-count{color:#cbbfe6;font-weight:normal;font-size:15px}.oc-chip{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-weight:600}.oc-chip i{display:inline-block;width:13px;height:13px;border-radius:50%}#formers td.yr{text-align:right;white-space:nowrap}#formers th.yr{text-align:right}.hist-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:12px;width:max-content;max-width:calc(100vw - 40px);box-sizing:border-box;background:#fbf3d5;color:#3d2f0e;border:1px solid #d9c48a;border-left:5px solid #b7a57a;border-radius:8px;box-shadow:0 6px 20px rgba(61,47,14,.25);padding:11px 10px 11px 14px;font-size:14px;line-height:1.5;transition:opacity .4s}.hist-toast b{color:#4b2e83;font-weight:700}.hist-toast button{background:none;border:0;color:#85754d;font-size:20px;line-height:1;cursor:pointer;padding:0 6px;border-radius:4px}.hist-toast button:hover{background:rgba(61,47,14,.08)}.hist-toast.gone{opacity:0}.hist-toast .warn{color:#9a3412;font-weight:600}.hist-toast .ic{flex:none;width:16px;height:16px;box-sizing:border-box;border-radius:50%;color:#047857;font-weight:700;font-size:16px;line-height:16px;text-align:center}.hist-toast .ic::before{content:"✓"}.hist-toast.busy .ic{border:2px solid #e6d5a3;border-top-color:#85754d;animation:toast-spin .9s linear infinite}.hist-toast.busy .ic::before{content:""}@keyframes toast-spin{to{transform:rotate(360deg)}}'
-        + '#roster td.xp-cell{width:1%;padding:5px 6px 5px 2px}.xp-row{background:#fff;border:1px solid #d6cdee;border-radius:5px;color:#4b2e83;cursor:pointer;font-size:14px;line-height:1;padding:3px 6px}.xp-row:hover,.xp-row:focus-visible{background:#efeaf8;border-color:#4b2e83}'
         + '#export-open{background:none;border:1px solid #8f7bc4;border-radius:15px;color:#e6ddf7;font:inherit;font-size:14px;font-weight:normal;padding:3px 12px;cursor:pointer;white-space:nowrap}#export-open:hover{background:rgba(255,255,255,.08);color:#fff}.panel.collapsed #export-open{display:none}'
         + '#xp-back{position:fixed;inset:0;z-index:70;background:rgba(30,16,60,.32);display:flex;justify-content:center;align-items:flex-start;padding:8vh 16px 16px;box-sizing:border-box}#xp-back[hidden]{display:none}'
         + '#xp{width:min(580px,100%);max-height:84vh;display:flex;flex-direction:column;background:#fff;border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.28);overflow:hidden;font-size:14px}'
@@ -1177,7 +1176,7 @@ javascript:(function(){
             /* By cohort: a first column labels each entering class once, with a continuous line down beside its students; the Year
                column repeats it, so it is dropped. Rows keep the chosen sort within each cohort. */
             var grouped = view.groupByClass;
-            var cols = [["name", "Student"], ["stage", "Stage"], ["program", "Program"], ["year", "Year"], ["status", "Status"], [null, "Advisor"], [null, "Milestones"], [null, "Funding now"], ["flags", "Flags"], [null, ""]]
+            var cols = [["name", "Student"], ["stage", "Stage"], ["program", "Program"], ["year", "Year"], ["status", "Status"], [null, "Advisor"], [null, "Milestones"], [null, "Funding now"], ["flags", "Flags"]]
                 .filter(function(c){ return !(grouped && c[0] === "year"); });
             if(grouped) cols.unshift([null, "Cohort"]);
             var row = function(s, lead){
@@ -1190,7 +1189,7 @@ javascript:(function(){
                 var lit = !!(fc && fc(s));
                 return "<tr class='" + (d ? "" : "limited") + (hl && hl(s) ? " hl" + (fc && !lit ? " soft" : "") : "") + (lit ? " focus" : "") + "'>" + (lead || "") + "<td class='nm'" + (s.admitFromLists ? " title='" + esc(startTip(s)) + "'" : "") + ">" + name + "</td><td>" + connector(s, lit) + "</td><td>" + esc(s.level) + "<div class='small'>" + esc(s.program) + "</div></td>"
                     + (grouped ? "" : "<td>" + (s.year === null ? "—" : s.year) + admitted + "</td>") + "<td>" + status + "</td><td>" + (d ? lines(d.AdvisorChair).map(esc).join("<br>") || "—" : "") + "</td><td>" + milestones(s)
-                    + "</td><td>" + funding(s) + "</td><td>" + flags + "</td><td class='xp-cell'><button type='button' class='xp-row' data-export='" + s.idx + "' title='Export " + esc(s.name) + " to an Excel template' aria-label='Export " + esc(s.name) + " to Excel'>⤓</button></td></tr>";
+                    + "</td><td>" + funding(s) + "</td><td>" + flags + "</td></tr>";
             };
             var cohortCell = function(label, meta, members, ay){
                 var flagged = members.filter(function(s){ return flagsFor(s).length > 0; }).length;
@@ -1310,14 +1309,18 @@ javascript:(function(){
         /* The full history arrives from the MyGrad tab after the dashboard opens (loadListHistory): progress by year, then
            former students found only on MyGrad's quarter lists, added to their entering classes. */
         /* A toast while the history loads, so nobody wonders why Entering classes changes a minute later; × hides it. */
-        var histToast = null, toastParts = { hist: "", ms: "" }, toastBusy = { hist: true, ms: true };
+        /* Export to Excel reports in it too (part "xp"), even after × hid the loading toast; its message replaces finished ones. */
+        var histToast = null, toastParts = { hist: "", ms: "", xp: "" }, toastBusy = { hist: true, ms: true, xp: false }, toastTimer = null;
         function toast(html, fade, part){
-            if(histToast === false) return;
             part = part || "hist";
+            if(histToast === false){ if(part !== "xp") return; histToast = null; }
+            ["hist", "ms", "xp"].forEach(function(k){ if(k !== part && (part === "xp" || k === "xp") && !toastBusy[k]) toastParts[k] = ""; });
             toastParts[part] = html;
             toastBusy[part] = !fade;
-            html = ["hist", "ms"].map(function(k){ return toastParts[k]; }).filter(Boolean).join("<br>");
+            html = ["hist", "ms", "xp"].map(function(k){ return toastParts[k]; }).filter(Boolean).join("<br>");
             fade = !toastBusy.hist && !toastBusy.ms ? fade || 6000 : 0;
+            clearTimeout(toastTimer);
+            if(histToast) histToast.classList.remove("gone");
             if(histToast === null){
                 histToast = document.createElement("div");
                 histToast.className = "hist-toast";
@@ -1329,7 +1332,7 @@ javascript:(function(){
             histToast.querySelector(".t").innerHTML = html;
             /* A spinner while either reading is still going, a check once both are done. */
             histToast.classList.toggle("busy", toastBusy.hist || toastBusy.ms);
-            if(fade) setTimeout(function(){ if(histToast){ histToast.classList.add("gone"); setTimeout(function(){ if(histToast) histToast.remove(); }, 450); } }, fade);
+            if(fade) toastTimer = setTimeout(function(){ if(histToast){ histToast.classList.add("gone"); toastTimer = setTimeout(function(){ if(histToast){ histToast.remove(); histToast = null; } }, 450); } }, fade);
         }
         var historyPending = true;
         /* Candidacy and 800 credits arrive from the MyGrad tab after the dashboard opens (loadMilestones): progress, then the
@@ -1583,8 +1586,6 @@ javascript:(function(){
             select(g.getAttribute("data-cohort"));
         });
         document.getElementById("roster").addEventListener("click", function(e){
-            var xb = e.target.closest("[data-export]");
-            if(xb) return openExport([+xb.getAttribute("data-export")], xb);
             var g = e.target.closest("td.coh[data-cohort]");
             if(g) return select(g.getAttribute("data-cohort"));
             var th = e.target.closest("th[data-sort]");
@@ -2094,8 +2095,8 @@ javascript:(function(){
             xpCount();
         }
         function closeExport(){ var back = document.getElementById("xp-back"); if(back) back.hidden = true; if(xp.from && xp.from.focus) xp.from.focus(); }
-        /* Opened from the Students bar with everyone Students shows checked, or from a student's row with just them. */
-        function openExport(only, from){
+        /* Opened from the Students bar, with everyone Students shows checked. */
+        function openExport(from){
             var back = document.getElementById("xp-back");
             if(!back){
                 document.body.insertAdjacentHTML("beforeend", "<div id='xp-back' hidden><div id='xp' role='dialog' aria-modal='true' aria-labelledby='xp-title'>"
@@ -2133,7 +2134,7 @@ javascript:(function(){
             xp.from = from || null;
             xp.list = visible();
             xp.picked = {};
-            xp.list.forEach(function(s){ if(!only || only.indexOf(s.idx) !== -1) xp.picked[s.idx] = true; });
+            xp.list.forEach(function(s){ xp.picked[s.idx] = true; });
             xpMsg("");
             xpRenderTemplates();
             xpRenderStudents();
@@ -2169,10 +2170,11 @@ javascript:(function(){
                 a.click();
                 setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 10000);
                 var n = picked.length, unit = out.mode === "rows" ? (n === 1 ? " row" : " rows") : (n === 1 ? " tab" : " tabs");
-                xpMsg("Downloaded <b>" + esc(name) + "</b>: " + n + unit + (out.filled.length ? ", with " + esc(out.filled.join(", ")) + " filled in" : ", but MyGrad had nothing for its labels") + ". It holds student records: keep it where UW allows them.");
+                closeExport();
+                toast("Downloaded <b>" + esc(name) + "</b>: " + n + unit + (out.filled.length ? "" : ", but MyGrad had nothing for its labels") + ". It holds student records: keep it where UW allows them.", 9000, "xp");
             }).catch(function(err){ xpMsg("Couldn’t export: " + esc(err.message), true); }).then(xpCount);
         }
-        document.getElementById("export-open").addEventListener("click", function(){ openExport(null, this); });
+        document.getElementById("export-open").addEventListener("click", function(){ openExport(this); });
 
         render();
     }
