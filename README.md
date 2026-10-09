@@ -67,15 +67,21 @@ A [bookmarklet](https://en.wikipedia.org/wiki/Bookmarklet) is a bookmark stored 
 
 ```
 javascript:(function(){
-  var s = document.createElement('script');
-  s.src = 'https://cdn.jsdelivr.net/gh/ischnee/MyGradMod@main/bookmarklet-mygradmod.js?t=' + Date.now();
-  s.onload = function() { console.log('[Bookmarklet] Script loaded'); };
-  s.onerror = function() { alert("MyGradMod couldn't load on this page. Open MyGrad > Students > Student Lists > By Quarter, then click it again."); };
-  document.body.appendChild(s);
+  function load(v) {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/gh/ischnee/MyGradMod@' + v + '/bookmarklet-mygradmod.js' + (v === 'main' ? '?t=' + Date.now() : '');
+    s.onerror = function() { alert("MyGradMod couldn't load on this page. Open MyGrad > Students > Student Lists > By Quarter, then click it again."); };
+    document.body.appendChild(s);
+  }
+  fetch('https://api.github.com/repos/ischnee/MyGradMod/commits/main', { headers: { Accept: 'application/vnd.github.sha' } })
+    .then(function(r) { return r.ok ? r.text() : ''; })
+    .then(function(sha) { load(/^[0-9a-f]{40}$/.test(sha) ? sha : 'main'); }, function() { load('main'); });
 })();
 ```
 
-This short script loads the latest version of MyGradMod from this repository each time you click it, so you never need to reinstall it to get updates.
+This short script loads the latest version of MyGradMod from this repository each time you click it, so you never need to reinstall it to get updates. It asks GitHub which version is latest, so an update reaches you as soon as it's published. If GitHub doesn't answer, it falls back to jsDelivr's copy, which can lag behind by up to a day.
+
+**Installed the loader before October 8, 2026?** Replace its address with the script above. The older loader relies on jsDelivr's copy alone, which can be hours behind.
 
 **Prefer a fixed copy that doesn't update itself?** Download `MyGradMod.html` from this repository and import it in Chrome (Bookmark Manager → three dots → Import bookmarks). To update it later, delete that bookmark and import a newer copy.
 
