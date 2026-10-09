@@ -107,7 +107,7 @@ This short script loads the latest version of MyGradMod from this repository eac
   - Views: In the program, Flagged, All.
   - Search by name or advisor.
   - Clicking a cohort, stage cell or dot highlights those students across the page.
-  - **Export…** (in the Students bar) and the **⤓** button at the end of each row fill an Excel template for the students you pick. See [Export to Excel](#export-to-excel).
+  - **Export…** (in the Students bar) fills an Excel template for the students you pick. See [Export to Excel](#export-to-excel).
 - **Former students:** closed until you open it. It lists everyone who has finished or left, by entering class, with outcome, quarter and years to PhD.
   - Views: All, PhD, Left with MA, Left.
   - Search by name.
@@ -121,8 +121,8 @@ Hovering explains most numbers in place, e.g. why a cell is marked "stalled".
 Fill your own Excel template with what MyGradMod knows about the students you pick.
 
 - **Add a template once.** Click **Export…**, then **Add a template…** and pick the .xlsx file. It stays in your browser for next time and is never uploaded.
-- **Pick students.** The dialog lists the students Students is showing, by entering class: from **Export…** all are checked; from a row's **⤓**, just that student. Click a class's heading to check or uncheck the whole class.
-- **Export** downloads a filled copy of the template. Your template itself is never changed.
+- **Pick students.** The dialog lists the students Students is showing, by entering class, all checked. **None** clears them; click a class's heading to check or uncheck the whole class.
+- **Export** downloads a filled copy (named for the student when there's only one) and closes the dialog; a toast confirms. Your template itself is never changed.
 
 **Two layouts, recognized from the template's own labels:**
 
