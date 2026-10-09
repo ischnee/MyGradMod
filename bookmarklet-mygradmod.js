@@ -1670,13 +1670,15 @@ javascript:(function(){
            courses (no grade yet) don't count yet. */
         function earned(c){ var g = String(c.grade || "").trim(), n = parseFloat(g); return c.credits !== null && !!g && !/^(w|hw|i|x|nc|ns|e|nf)$/i.test(g) && (isNaN(n) || n >= 0.7); }
         function graded(c){ return /^\d(\.\d+)?$/.test(String(c.grade || "").trim()); }
-        /* Philosophy's course lists, from the UW catalog's PhD and MA requirements (read Oct 8, 2026): the three distribution
-           areas (two courses each) and the courses designated as seminars. Basic logic is PHIL 120 or equivalent; the
-           department's MA page also accepts a graduate logic course passed with 3.0. */
+        /* Philosophy's course lists. The three distribution areas (two courses each) are the UW catalog's PhD and MA lists (read
+           Oct 8, 2026). Seminars are the department's practice, per the chair: 500-level courses except 500-505, and not 595,
+           which the department's MA page says doesn't count as a seminar (the catalog's "designated seminars" are a subset).
+           Basic logic is PHIL 120 or equivalent; the MA page also accepts a graduate logic course passed with 3.0. */
         var PHIL_AREAS = { 1: [419, 422, 426, 430, 431, 433, 436, 437, 438, 520, 522, 526],
             2: [450, 453, 455, 459, 460, 463, 464, 466, 470, 471, 472, 473, 474, 479, 481, 482, 483, 486, 490, 550, 556, 560, 563, 564, 566, 570, 587],
             3: [404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 440, 441, 442, 445, 446, 448, 449, 465, 467, 510, 514, 538, 540, 545, 565] };
-        var PHIL_SEMINARS = [510, 514, 520, 522, 526, 540, 545, 550, 556, 560, 563, 564, 565, 566, 570], PHIL_LOGIC = [470, 471, 472, 473, 474, 570];
+        var PHIL_LOGIC = [470, 471, 472, 473, 474, 570];
+        function seminar(num){ return num >= 506 && num <= 599 && num !== 595; }
         function exportValues(s, tr){
             var d = s.d || {}, m = s.ms || {}, legal = String(s.legalName || s.name || ""), comma = legal.indexOf(",");
             var granted = lines(d.MastersRequests).filter(function(l){ return /granted|awarded/i.test(l); })[0] || "";
@@ -1713,8 +1715,8 @@ javascript:(function(){
                 out.courses = mine.filter(function(c){ return c.num < 600; }).map(function(c, i){ return { c: c, i: i }; }).sort(function(x, y){ return ((x.c.q || {}).idx || 0) - ((y.c.q || {}).idx || 0) || x.i - y.i; }).map(function(x){
                     var c = x.c, phil = c.dept === "PHIL", good = phil && pass30(c), area = "";
                     [1, 2, 3].forEach(function(a){ if(good && PHIL_AREAS[a].indexOf(c.num) !== -1) area = a; });
-                    return Object.assign({}, c, { area: area, sem: good && PHIL_SEMINARS.indexOf(c.num) !== -1 ? "Y" : "", pending: !String(c.grade || "").trim(),
-                        kind: !phil ? "" : c.num === 504 || c.num === 505 ? "teaching" : c.num === 502 || c.num === 503 ? "workshop" : PHIL_SEMINARS.indexOf(c.num) !== -1 ? "seminar" : "course" });
+                    return Object.assign({}, c, { area: area, sem: good && seminar(c.num) ? "Y" : "", pending: !String(c.grade || "").trim(),
+                        kind: !phil ? "" : c.num === 504 || c.num === 505 ? "teaching" : c.num === 502 || c.num === 503 ? "workshop" : seminar(c.num) ? "seminar" : "course" });
                 });
                 var logic = tr.courses.filter(function(c){ return c.dept === "PHIL" && ((c.num === 120 && earned(c)) || (PHIL_LOGIC.indexOf(c.num) !== -1 && pass30(c))); })[0];
                 out.logic = logic ? "PHIL " + logic.num + (logic.q ? ", " + logic.q.label : "") : "";
